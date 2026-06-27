@@ -248,6 +248,11 @@ export class ElectrumClient extends EventEmitter {
     return this._blockHeight;
   }
 
+  /** Number of scripthashes currently tracked for re-subscription. Exposed for testing. */
+  get subscriptionCount(): number {
+    return this.subscriptions.size;
+  }
+
   destroy() {
     this.destroyed = true;
     if (this.reconnectTimer) {

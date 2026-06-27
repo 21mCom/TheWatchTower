@@ -28,6 +28,11 @@ export function getNodeStatus(): NodeStatus {
   return { ...nodeStatus };
 }
 
+/** Returns the active ElectrumClient instance, or null if not initialized. Exposed for testing. */
+export function getElectrumClient(): ElectrumClient | null {
+  return electrum;
+}
+
 export function getXmpp(): XmppService {
   return xmpp;
 }
