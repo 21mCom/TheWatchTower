@@ -44,61 +44,85 @@
   --font-mono: var(--app-font-mono);
 }
 
+/* ── Light mode (default / Daylight Ops) ─────────────────────────────────── */
 :root {
   --app-font-sans: 'JetBrains Mono', 'Fira Code', monospace;
   --app-font-serif: Georgia, serif;
   --app-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --radius: 0.375rem; /* 6px */
-  
-  --background: 220 35% 7%;
-  --foreground: 214 32% 91%;
-  --border: 214 36% 18%;
-  
-  --card: 221 42% 9%;
-  --card-foreground: 214 32% 91%;
-  --card-border: 214 36% 18%;
-  
-  --sidebar: 221 42% 9%;
-  --sidebar-foreground: 214 32% 91%;
-  --sidebar-border: 214 36% 18%;
+  --radius: 0.375rem;
+
+  /* Semantic page-level tokens used in inline styles */
+  --wt-card-bg:     #FFFFFF;
+  --wt-input-bg:    #F8FAFC;
+  --wt-card-alt-bg: #EDF3FA;
+  --wt-border:      #BDCADA;
+  --wt-divider:     #D8E4F0;
+  --wt-text:        #1E2D45;
+  --wt-text-secondary: #4B6480;
+  --wt-text-muted:  #5B6F87;
+  --wt-text-dim:    #9AAFC7;
+
+  --background: 210 33% 96%;       /* #F1F5FA — light blue-grey shell */
+  --foreground: 220 40% 11%;       /* #0D1520 — dark navy text */
+  --border: 214 25% 79%;           /* #BDCADA */
+
+  --card: 0 0% 100%;               /* white panels */
+  --card-foreground: 220 40% 11%;
+  --card-border: 214 25% 82%;
+
+  --sidebar: 210 30% 92%;          /* #E3EAF2 */
+  --sidebar-foreground: 220 40% 11%;
+  --sidebar-border: 214 25% 79%;
   --sidebar-primary: 33 93% 54%;
   --sidebar-primary-foreground: 0 0% 0%;
-  --sidebar-accent: 214 40% 11%;
+  --sidebar-accent: 210 30% 88%;
   --sidebar-accent-foreground: 33 93% 54%;
   --sidebar-ring: 33 93% 54%;
 
-  --popover: 221 42% 9%;
-  --popover-foreground: 214 32% 91%;
-  --popover-border: 214 36% 18%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 40% 11%;
+  --popover-border: 214 25% 82%;
 
-  --primary: 33 93% 54%;
+  --primary: 33 93% 54%;           /* Bitcoin orange — unchanged */
   --primary-foreground: 0 0% 0%;
 
-  --secondary: 214 36% 18%;
-  --secondary-foreground: 214 32% 91%;
+  --secondary: 214 25% 86%;
+  --secondary-foreground: 220 40% 11%;
 
-  --muted: 214 40% 11%;
-  --muted-foreground: 216 27% 40%;
+  --muted: 210 30% 91%;            /* #DDE5EF */
+  --muted-foreground: 216 22% 42%; /* #5B6F87 */
 
-  --accent: 214 40% 11%;
+  --accent: 210 30% 91%;
   --accent-foreground: 33 93% 54%;
 
   --destructive: 0 84% 60%;
-  --destructive-foreground: 214 32% 91%;
+  --destructive-foreground: 0 0% 100%;
 
-  --input: 214 36% 18%;
+  --input: 214 25% 82%;
   --ring: 33 93% 54%;
 }
 
+/* ── Dark mode (Direction A — Ops Console) ──────────────────────────────── */
 .dark {
+  /* Semantic page-level tokens */
+  --wt-card-bg:     #0D1320;
+  --wt-input-bg:    #080D14;
+  --wt-card-alt-bg: #142030;
+  --wt-border:      #1E2D40;
+  --wt-divider:     #111B28;
+  --wt-text:        #CBD5E1;
+  --wt-text-secondary: #94A3B8;
+  --wt-text-muted:  #4A6080;
+  --wt-text-dim:    #2A4060;
+
   --background: 220 35% 7%;
   --foreground: 214 32% 91%;
   --border: 214 36% 18%;
-  
+
   --card: 221 42% 9%;
   --card-foreground: 214 32% 91%;
   --card-border: 214 36% 18%;
-  
+
   --sidebar: 221 42% 9%;
   --sidebar-foreground: 214 32% 91%;
   --sidebar-border: 214 36% 18%;
