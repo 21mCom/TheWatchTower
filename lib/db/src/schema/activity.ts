@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, real } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, bigint } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -7,7 +7,7 @@ export const alertEvents = pgTable("alert_events", {
   addressId: text("address_id").notNull(),
   txid: text("txid").notNull(),
   direction: text("direction", { enum: ["incoming", "outgoing"] }).notNull(),
-  amountSats: real("amount_sats").notNull().default(0),
+  amountSats: bigint("amount_sats", { mode: "number" }).notNull().default(0),
   status: text("status", { enum: ["mempool", "confirmed"] }).notNull(),
   blockHeight: integer("block_height"),
   mempoolAlertedAt: timestamp("mempool_alerted_at", { withTimezone: true }),
