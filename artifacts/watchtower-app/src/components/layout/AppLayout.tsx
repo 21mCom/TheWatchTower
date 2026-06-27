@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useGetNodeStatus } from "@workspace/api-client-react";
 import { useTheme } from "@/lib/theme";
-import logoSvg from "@/assets/logo.svg";
+import logoSvg from "@/assets/logo-shield.png";
 
 function ThemeToggle() {
   const { theme, toggle } = useTheme();
@@ -138,26 +138,12 @@ export function Sidebar() {
       })}
 
       {/* Logo above version label */}
-      <div style={{ marginTop: "auto", padding: "12px 14px 8px" }}>
-        <div style={{
-          border: `1px solid ${isDark ? "#2A4060" : "#BDCADA"}`,
-          borderRadius: 6,
-          overflow: "hidden",
-          background: isDark ? "#060A10" : "#F8FAFC",
-        }}>
-          <img
-            src={logoSvg}
-            alt="The Watchtower"
-            style={{
-              display: "block",
-              width: "100%",
-              height: "auto",
-              filter: isDark
-                ? "drop-shadow(1px 0 0 #3A5070) drop-shadow(-1px 0 0 #3A5070) drop-shadow(0 1px 0 #3A5070) drop-shadow(0 -1px 0 #3A5070)"
-                : "none",
-            }}
-          />
-        </div>
+      <div style={{ marginTop: "auto", padding: "12px 20px 8px" }}>
+        <img
+          src={logoSvg}
+          alt="The Watchtower"
+          style={{ display: "block", width: "100%", height: "auto" }}
+        />
       </div>
 
       {/* Version label */}
