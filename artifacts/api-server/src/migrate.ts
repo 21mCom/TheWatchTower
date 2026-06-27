@@ -3,11 +3,35 @@
  * Run once at container startup (before index.ts) to ensure all tables exist.
  * Uses raw DDL (CREATE TABLE IF NOT EXISTS) — idempotent and safe to re-run.
  *
- * Uses the @workspace/db pool (which bundles pg) so no additional pg import needed.
+ * Includes a DB readiness retry loop so this can run immediately at container
+ * start without depending on external healthcheck tooling.
  */
 import { pool } from "@workspace/db";
 
+const MAX_RETRIES = 30;
+const RETRY_DELAY_MS = 2_000;
+
+async function waitForDb(): Promise<void> {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const client = await pool.connect();
+      client.release();
+      console.log("[migrate] Database is ready");
+      return;
+    } catch (err) {
+      const msg = (err as Error).message ?? String(err);
+      console.log(`[migrate] DB not ready (attempt ${attempt}/${MAX_RETRIES}): ${msg}`);
+      if (attempt === MAX_RETRIES) {
+        throw new Error(`Database did not become ready after ${MAX_RETRIES} attempts`);
+      }
+      await new Promise((res) => setTimeout(res, RETRY_DELAY_MS));
+    }
+  }
+}
+
 async function main() {
+  await waitForDb();
+
   const client = await pool.connect();
   try {
     await client.query(`
@@ -66,9 +90,12 @@ async function main() {
   } finally {
     client.release();
   }
+
+  // Allow pool to drain so the process exits cleanly
+  await pool.end();
 }
 
 main().catch((err) => {
-  console.error("[migrate] Fatal:", err);
+  console.error("[migrate] Fatal:", err.message ?? err);
   process.exit(1);
 });

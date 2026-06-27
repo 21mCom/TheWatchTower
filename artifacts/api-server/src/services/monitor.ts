@@ -243,6 +243,7 @@ async function processScripthashHistory(scripthash: string, client: ElectrumClie
           "confirmed",
           height,
           confs,
+          threshold,
         );
       }
     }
