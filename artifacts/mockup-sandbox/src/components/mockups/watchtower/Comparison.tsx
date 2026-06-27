@@ -90,7 +90,7 @@ export default function Comparison() {
                 </button>
               </div>
 
-              {/* Scaled component preview */}
+              {/* Scaled component preview — fully interactive */}
               <div style={{ flex: 1, position: "relative", overflow: "hidden", background: dir === "A" ? "#0B0F17" : "#F8FAF9" }}>
                 <div style={{
                   position: "absolute",
@@ -100,16 +100,9 @@ export default function Comparison() {
                   height: "200%",
                   transform: "scale(0.5)",
                   transformOrigin: "top left",
-                  pointerEvents: "none",
-                  userSelect: "none",
                 }}>
                   {dir === "A" ? <DirectionA /> : <DirectionB />}
                 </div>
-                {/* Transparent overlay to capture clicks for selection without navigating inside */}
-                <div
-                  style={{ position: "absolute", inset: 0, cursor: "default" }}
-                  title="Click 'Choose' above to select this direction"
-                />
               </div>
 
               {/* Bottom description */}
