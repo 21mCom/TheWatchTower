@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { ElectrumClient } from "./electrum.js";
 import { XmppService } from "./xmpp.js";
 import { decodeRawTx } from "./bitcoin.js";
+import { resolveOutgoingAmountSats } from "./outgoing.js";
 import { logger } from "../lib/logger.js";
 
 interface NodeStatus {
@@ -277,10 +278,8 @@ async function processScripthashHistory(scripthash: string, client: ElectrumClie
  * Decode a raw transaction to determine direction and amount for a watched address.
  *
  * Incoming: one or more outputs pay to our scripthash → sum those output values.
- * Outgoing: no outputs pay to us → this is a spend.
- *   To find the outgoing amount, look up each input's previous transaction,
- *   find the output that corresponds to the prevout index, and sum values where
- *   the prevout's scripthash matches ours.
+ * Outgoing: no outputs pay to us → this is a spend. The outgoing amount is resolved
+ *   via prevout lookups using resolveOutgoingAmountSats.
  */
 async function processNewTx(
   addressId: string,
@@ -306,23 +305,11 @@ async function processNewTx(
       direction = "incoming";
       amountSats = ourOutputs.reduce((sum, o) => sum + o.valueSats, 0);
     } else {
-      // No outputs to us — this is a spend originating from our address
+      // No outputs to us — this is a spend originating from our address.
+      // Resolve the spent amount via prevout lookups.
       direction = "outgoing";
-      // Calculate the amount spent by summing prevouts that belong to our address
-      let spentSats = 0;
-      for (const input of inputs) {
-        try {
-          const prevRaw = await client.getTransaction(input.prevhash);
-          const { outputs: prevOutputs } = decodeRawTx(prevRaw);
-          const prevOut = prevOutputs[input.previndex];
-          if (prevOut && prevOut.scripthash === scripthash) {
-            spentSats += prevOut.valueSats;
-          }
-        } catch (err) {
-          logger.warn({ err, prevhash: input.prevhash }, "[monitor] prevout lookup failed");
-        }
-      }
-      amountSats = spentSats;
+      amountSats = await resolveOutgoingAmountSats(inputs, scripthash, client);
+      logger.info({ txid, amountSats }, "[monitor] outgoing transaction amount resolved");
     }
   } catch (err) {
     logger.warn({ err, txid }, "[monitor] Failed to decode transaction");

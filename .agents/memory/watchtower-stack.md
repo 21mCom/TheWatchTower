@@ -26,7 +26,7 @@ description: Key decisions for The Watchtower Bitcoin address monitor — Electr
 - `reloadMonitor()` called when settings change (PUT /settings)
 - Alert deduplication: check `alert_events` by (address_id, txid) before inserting
 - Direction: if any output's scripthash matches watched address → "incoming"; otherwise → "outgoing"
-- Outgoing amount = 0 (prevout lookup is too expensive for MVP)
+- Outgoing amount = sum of prevout values matching our scripthash (prevout lookup fully implemented)
 
 ## XMPP
 - Uses `@xmpp/client` package; singleton `XmppService` in services/xmpp.ts
