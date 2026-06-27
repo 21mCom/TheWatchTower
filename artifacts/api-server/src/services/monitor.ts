@@ -17,6 +17,11 @@ interface NodeStatus {
 
 let electrum: ElectrumClient | null = null;
 const xmpp = new XmppService();
+
+/** Counts every call to sendTransactionAlert regardless of XMPP connectivity. Exposed for testing. */
+let _alertSendAttempts = 0;
+export function _getAlertSendAttempts(): number { return _alertSendAttempts; }
+export function _resetAlertSendAttempts(): void { _alertSendAttempts = 0; }
 let nodeStatus: NodeStatus = {
   connected: false,
   blockHeight: null,
@@ -260,12 +265,22 @@ export async function processScripthashHistory(scripthash: string, client: Elect
       await processNewTx(watched.id, watched.label, watched.address, scripthash, txid, height, initialStatus, client, threshold);
     } else {
       const evt = existing[0]!;
-      // Upgrade mempool → confirmed only when the threshold is reached
+      // Upgrade mempool → confirmed only when the threshold is reached.
+      // Guard against concurrent calls racing on the same tx: add status='mempool'
+      // to the WHERE clause so the UPDATE is a no-op if another call already won.
+      // .returning() lets us check the affected-row count without a second SELECT.
       if (evt.status === "mempool" && meetsThreshold) {
-        await db
+        const upgraded = await db
           .update(alertEvents)
           .set({ status: "confirmed", blockHeight: height, confirmedAlertedAt: new Date() })
-          .where(eq(alertEvents.id, evt.id));
+          .where(and(eq(alertEvents.id, evt.id), eq(alertEvents.status, "mempool")))
+          .returning({ id: alertEvents.id });
+
+        if (upgraded.length === 0) {
+          // Another concurrent processScripthashHistory call already upgraded this
+          // transaction — skip the duplicate alert.
+          continue;
+        }
 
         await sendTransactionAlert(
           watched.label,
@@ -363,6 +378,7 @@ async function sendTransactionAlert(
   confs: number,
   threshold: number = 1,
 ) {
+  _alertSendAttempts++;
   if (!xmpp.isConfigured() || !xmpp.isConnected()) return;
 
   const sign = direction === "incoming" ? "+" : "-";

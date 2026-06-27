@@ -20,7 +20,7 @@ import net from "net";
 import crypto from "crypto";
 import { db, watchedAddresses, alertEvents, appSettings } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
-import { initMonitor, destroyMonitor, getElectrumClient, processScripthashHistory } from "../monitor.js";
+import { initMonitor, destroyMonitor, getElectrumClient, processScripthashHistory, _getAlertSendAttempts, _resetAlertSendAttempts } from "../monitor.js";
 
 // ── Scripthash helpers ────────────────────────────────────────────────────────
 
@@ -326,5 +326,95 @@ test("concurrent processScripthashHistory calls produce exactly one alert_events
     1,
     `Expected exactly 1 alert_events row after two concurrent processScripthashHistory calls, ` +
       `but found ${n}. The unique constraint or onConflictDoNothing() may not be active.`,
+  );
+});
+
+test("concurrent processScripthashHistory calls on a mempool tx produce exactly one confirmed-alert send", async () => {
+  const client = getElectrumClient();
+  assert.ok(client !== null, "ElectrumClient must be active for this test");
+
+  // Seed the alert_events row in "mempool" status so both concurrent calls hit the
+  // mempool→confirmed upgrade branch (not the new-tx insert path).
+  // Delete any leftover row from a prior test first, then do a clean insert.
+  await db
+    .delete(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)));
+
+  await db.insert(alertEvents).values({
+    id: crypto.randomUUID(),
+    addressId: TEST_ADDR_ID,
+    txid: TEST_TXID,
+    direction: "incoming",
+    amountSats: 50_000,
+    status: "mempool",
+    blockHeight: null,
+    mempoolAlertedAt: new Date(),
+    confirmedAlertedAt: null,
+  });
+
+  // Sanity-check: the row must be in mempool state before the concurrent calls.
+  // If it's already confirmed a background reconnect-triggered catch-up upgraded it
+  // before we installed the spy — the sleep below gives it time to settle first.
+  let [preCheck] = await db
+    .select({ status: alertEvents.status })
+    .from(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)))
+    .limit(1);
+
+  if (preCheck?.status === "confirmed") {
+    // A background processScripthashHistory (from the previous reconnect cycle) beat us.
+    // Reset to mempool so the spy-guarded concurrent calls can do the upgrade.
+    await db
+      .update(alertEvents)
+      .set({ status: "mempool", blockHeight: null, confirmedAlertedAt: null })
+      .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)));
+
+    [preCheck] = await db
+      .select({ status: alertEvents.status })
+      .from(alertEvents)
+      .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)))
+      .limit(1);
+  }
+
+  assert.equal(
+    preCheck?.status,
+    "mempool",
+    "alert_events row must be in mempool state before the concurrent upgrade test",
+  );
+
+  // Reset the module-level counter before the concurrent calls so only the
+  // upgrade attempts below are counted.  The counter increments at the top of
+  // sendTransactionAlert regardless of XMPP connectivity, making it reliable
+  // even in test environments where the XMPP service is not configured.
+  _resetAlertSendAttempts();
+
+  // Fire two concurrent upgrade attempts for the same mempool tx.
+  // The mock server returns height 800_000 (confirmed, 1 conf ≥ threshold 1),
+  // so both calls will enter the mempool→confirmed branch.
+  // Only one should win the guarded UPDATE; the other sees 0 rows returned and
+  // skips sendTransactionAlert entirely.
+  await Promise.all([
+    processScripthashHistory(TEST_SCRIPTHASH, client!),
+    processScripthashHistory(TEST_SCRIPTHASH, client!),
+  ]);
+
+  const alertSendCount = _getAlertSendAttempts();
+
+  // The row must be confirmed after the race settles.
+  const [row] = await db
+    .select({ status: alertEvents.status, confirmedAlertedAt: alertEvents.confirmedAlertedAt })
+    .from(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)))
+    .limit(1);
+
+  assert.equal(row?.status, "confirmed", "alert_events row should be in confirmed status after the concurrent upgrade");
+  assert.ok(row?.confirmedAlertedAt != null, "confirmedAlertedAt should be set after the upgrade");
+
+  assert.equal(
+    alertSendCount,
+    1,
+    `Expected exactly 1 confirmed-alert send after two concurrent processScripthashHistory calls ` +
+      `on a mempool tx, but sendTransactionAlert was called ${alertSendCount} time(s). ` +
+      `The guarded UPDATE WHERE status='mempool' in the upgrade branch may not be working.`,
   );
 });
