@@ -68,10 +68,14 @@ async function loadSettingsAndConnect() {
     electrum = null;
   }
 
+  const reconnectDelayMs = process.env.ELECTRUM_RECONNECT_DELAY_MS
+    ? parseInt(process.env.ELECTRUM_RECONNECT_DELAY_MS, 10)
+    : 10_000;
   const client = new ElectrumClient(
     settings.electrumHost,
     settings.electrumPort,
     settings.electrumTls,
+    reconnectDelayMs,
   );
 
   // Swallow socket errors so they don't crash the process; reconnect handles recovery
@@ -390,4 +394,17 @@ export async function reloadMonitor() {
   xmpp.disconnect();
   nodeStatus = { connected: false, blockHeight: null, message: "Reloading...", lastCheckedAt: new Date() };
   await loadSettingsAndConnect();
+}
+
+/**
+ * Tear down all active connections without scheduling a reconnect.
+ * Intended for use in tests and graceful shutdown handlers.
+ */
+export function destroyMonitor() {
+  if (electrum) {
+    electrum.destroy();
+    electrum = null;
+  }
+  xmpp.disconnect();
+  nodeStatus = { connected: false, blockHeight: null, message: "Destroyed", lastCheckedAt: new Date() };
 }

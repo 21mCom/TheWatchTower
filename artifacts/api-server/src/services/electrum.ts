@@ -30,6 +30,7 @@ export class ElectrumClient extends EventEmitter {
     private host: string,
     private port: number,
     private useTls: boolean,
+    private reconnectDelayMs: number = 10_000,
   ) {
     super();
   }
@@ -46,7 +47,7 @@ export class ElectrumClient extends EventEmitter {
           reject(err);
           // Even on initial failure, schedule reconnect
           if (!this.destroyed) {
-            this.reconnectTimer = setTimeout(() => this.reconnect(), 10_000);
+            this.reconnectTimer = setTimeout(() => this.reconnect(), this.reconnectDelayMs);
           }
         } else {
           resolve();
@@ -95,7 +96,7 @@ export class ElectrumClient extends EventEmitter {
         // Schedule reconnect (even if we never successfully connected)
         if (!this.destroyed) {
           if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-          this.reconnectTimer = setTimeout(() => this.reconnect(), 10_000);
+          this.reconnectTimer = setTimeout(() => this.reconnect(), this.reconnectDelayMs);
         }
       });
 
@@ -185,7 +186,7 @@ export class ElectrumClient extends EventEmitter {
       this.emit("reconnected");
     } catch {
       if (!this.destroyed) {
-        this.reconnectTimer = setTimeout(() => this.reconnect(), 10_000);
+        this.reconnectTimer = setTimeout(() => this.reconnect(), this.reconnectDelayMs);
       }
     }
   }
