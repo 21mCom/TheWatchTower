@@ -220,7 +220,7 @@ function confirmationCount(txHeight: number, chainTip: number | null): number {
  * Safe to call multiple times — deduplicates via the alert_events table.
  * Respects confirmationThreshold from settings before sending confirmed alerts.
  */
-async function processScripthashHistory(scripthash: string, client: ElectrumClient) {
+export async function processScripthashHistory(scripthash: string, client: ElectrumClient) {
   const [watched] = await db
     .select()
     .from(watchedAddresses)
@@ -328,17 +328,25 @@ async function processNewTx(
   const now = new Date();
   const confs = confirmationCount(height, client.blockHeight);
 
-  await db.insert(alertEvents).values({
-    id,
-    addressId,
-    txid,
-    direction,
-    amountSats,
-    status,
-    blockHeight: !isUnconfirmed(height) ? height : null,
-    mempoolAlertedAt: status === "mempool" ? now : null,
-    confirmedAlertedAt: status === "confirmed" ? now : null,
-  });
+  const inserted = await db
+    .insert(alertEvents)
+    .values({
+      id,
+      addressId,
+      txid,
+      direction,
+      amountSats,
+      status,
+      blockHeight: !isUnconfirmed(height) ? height : null,
+      mempoolAlertedAt: status === "mempool" ? now : null,
+      confirmedAlertedAt: status === "confirmed" ? now : null,
+    })
+    .onConflictDoNothing()
+    .returning({ id: alertEvents.id });
+
+  if (inserted.length === 0) {
+    return;
+  }
 
   // For mempool: always alert. For confirmed: alert with confirmation count.
   await sendTransactionAlert(label, address, txid, direction, amountSats, status, height, confs, threshold);

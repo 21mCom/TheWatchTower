@@ -20,7 +20,7 @@ import net from "net";
 import crypto from "crypto";
 import { db, watchedAddresses, alertEvents, appSettings } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
-import { initMonitor, destroyMonitor, getElectrumClient } from "../monitor.js";
+import { initMonitor, destroyMonitor, getElectrumClient, processScripthashHistory } from "../monitor.js";
 
 // ── Scripthash helpers ────────────────────────────────────────────────────────
 
@@ -295,5 +295,36 @@ test("subscriptions Set stays bounded and alert_events has no duplicates after 3
     `Expected subscriptions Set size to equal the number of watched addresses (${addressCount}) ` +
       `after ${CYCLES} reconnect cycles, but got ${client!.subscriptionCount}. ` +
       `The Set is growing unboundedly across cycles.`,
+  );
+});
+
+test("concurrent processScripthashHistory calls produce exactly one alert_events row", async () => {
+  const client = getElectrumClient();
+  assert.ok(client !== null, "ElectrumClient must be active for this test");
+
+  // Remove the row that the previous test inserted so we start from a clean state.
+  await db
+    .delete(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)));
+
+  // Fire two history-processing calls for the same scripthash at the same instant.
+  // Both will reach the SELECT-then-INSERT path concurrently and both will attempt to insert.
+  // The unique constraint on (address_id, txid) plus onConflictDoNothing() must guarantee
+  // that only one row lands in the table.
+  await Promise.all([
+    processScripthashHistory(TEST_SCRIPTHASH, client!),
+    processScripthashHistory(TEST_SCRIPTHASH, client!),
+  ]);
+
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)));
+
+  assert.equal(
+    n,
+    1,
+    `Expected exactly 1 alert_events row after two concurrent processScripthashHistory calls, ` +
+      `but found ${n}. The unique constraint or onConflictDoNothing() may not be active.`,
   );
 });

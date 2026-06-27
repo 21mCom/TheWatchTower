@@ -73,6 +73,25 @@ async function main() {
         detected_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
 
+      -- Remove any pre-existing duplicate (address_id, txid) rows before applying the
+      -- unique constraint. Keeps the row with the earliest detected_at (lowest id as
+      -- tiebreaker). Safe to run on a fresh DB with no rows.
+      DELETE FROM alert_events
+      WHERE id IN (
+        SELECT id FROM (
+          SELECT id,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY address_id, txid
+                   ORDER BY detected_at, id
+                 ) AS rn
+          FROM alert_events
+        ) t
+        WHERE rn > 1
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS alert_events_address_id_txid_idx
+        ON alert_events (address_id, txid);
+
       DO $$
       BEGIN
         IF EXISTS (
