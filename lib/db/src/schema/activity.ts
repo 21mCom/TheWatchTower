@@ -1,0 +1,22 @@
+import { pgTable, text, timestamp, integer, real } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+
+export const alertEvents = pgTable("alert_events", {
+  id: text("id").primaryKey(),
+  addressId: text("address_id").notNull(),
+  txid: text("txid").notNull(),
+  direction: text("direction", { enum: ["incoming", "outgoing"] }).notNull(),
+  amountSats: real("amount_sats").notNull().default(0),
+  status: text("status", { enum: ["mempool", "confirmed"] }).notNull(),
+  blockHeight: integer("block_height"),
+  mempoolAlertedAt: timestamp("mempool_alerted_at", { withTimezone: true }),
+  confirmedAlertedAt: timestamp("confirmed_alerted_at", { withTimezone: true }),
+  detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertAlertEventSchema = createInsertSchema(alertEvents).omit({
+  detectedAt: true,
+});
+export type InsertAlertEvent = z.infer<typeof insertAlertEventSchema>;
+export type AlertEvent = typeof alertEvents.$inferSelect;

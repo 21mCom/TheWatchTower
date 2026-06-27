@@ -1,0 +1,1 @@
+- [Watchtower stack](watchtower-stack.md) — key decisions for the Watchtower Bitcoin monitor (DB schema, Electrum client, XMPP, Umbrel packaging)

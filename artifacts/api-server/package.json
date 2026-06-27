@@ -12,6 +12,10 @@
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
+    "@xmpp/client": "^0.14.0",
+    "@xmpp/xml": "^0.14.0",
+    "bech32": "^2.0.0",
+    "bs58check": "^4.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "drizzle-orm": "catalog:",

@@ -2,21 +2,29 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 0.2.0
+  description: The Watchtower — Bitcoin address monitoring API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: addresses
+    description: Watched address management
+  - name: settings
+    description: App configuration
+  - name: activity
+    description: Transaction alert history
+  - name: status
+    description: Node connection status
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +32,194 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /addresses:
+    get:
+      operationId: listAddresses
+      tags: [addresses]
+      summary: List all watched addresses
+      responses:
+        "200":
+          description: List of watched addresses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WatchedAddress"
+    post:
+      operationId: createAddress
+      tags: [addresses]
+      summary: Add a new watched address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WatchedAddressCreate"
+      responses:
+        "201":
+          description: Address created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchedAddress"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Address already watched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /addresses/{id}:
+    put:
+      operationId: updateAddress
+      tags: [addresses]
+      summary: Update a watched address label or address
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WatchedAddressUpdate"
+      responses:
+        "200":
+          description: Updated address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchedAddress"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: deleteAddress
+      tags: [addresses]
+      summary: Remove a watched address
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get app settings
+      responses:
+        "200":
+          description: Current settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
+    put:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update app settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppSettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /settings/test-alert:
+    post:
+      operationId: sendTestAlert
+      tags: [settings]
+      summary: Send a test XMPP alert to the configured recipient
+      responses:
+        "200":
+          description: Result of the test
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestAlertResult"
+
+  /node-status:
+    get:
+      operationId: getNodeStatus
+      tags: [status]
+      summary: Get current Bitcoin node connection status
+      responses:
+        "200":
+          description: Node status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeStatus"
+
+  /activity:
+    get:
+      operationId: listActivity
+      tags: [activity]
+      summary: List detected transaction events and alert history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: addressId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Activity events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityPage"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +230,214 @@ components:
       required:
         - status
 
+    WatchedAddress:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        address:
+          type: string
+        scripthash:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - label
+        - address
+        - scripthash
+        - createdAt
+
+    WatchedAddressCreate:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+        address:
+          type: string
+          minLength: 1
+      required:
+        - label
+        - address
+
+    WatchedAddressUpdate:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+        address:
+          type: string
+          minLength: 1
+      required:
+        - label
+        - address
+
+    AppSettings:
+      type: object
+      properties:
+        electrumHost:
+          type: string
+        electrumPort:
+          type: integer
+        electrumTls:
+          type: boolean
+        confirmationThreshold:
+          type: integer
+        xmppServer:
+          type: string
+        xmppPort:
+          type: integer
+        xmppJid:
+          type: string
+        xmppTls:
+          type: boolean
+        recipientJid:
+          type: string
+        xmppConfigured:
+          type: boolean
+      required:
+        - electrumHost
+        - electrumPort
+        - electrumTls
+        - confirmationThreshold
+        - xmppServer
+        - xmppPort
+        - xmppJid
+        - xmppTls
+        - recipientJid
+        - xmppConfigured
+
+    AppSettingsUpdate:
+      type: object
+      properties:
+        electrumHost:
+          type: string
+        electrumPort:
+          type: integer
+        electrumTls:
+          type: boolean
+        confirmationThreshold:
+          type: integer
+        xmppServer:
+          type: string
+        xmppPort:
+          type: integer
+        xmppJid:
+          type: string
+        xmppPassword:
+          type: string
+        xmppTls:
+          type: boolean
+        recipientJid:
+          type: string
+
+    NodeStatus:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        blockHeight:
+          type: integer
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        lastCheckedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - connected
+
+    AlertEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        addressId:
+          type: string
+        addressLabel:
+          type: string
+        address:
+          type: string
+        txid:
+          type: string
+        direction:
+          type: string
+          enum: [incoming, outgoing]
+        amountSats:
+          type: number
+        status:
+          type: string
+          enum: [mempool, confirmed]
+        blockHeight:
+          type: integer
+          nullable: true
+        mempoolAlertedAt:
+          type: string
+          format: date-time
+          nullable: true
+        confirmedAlertedAt:
+          type: string
+          format: date-time
+          nullable: true
+        detectedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - addressId
+        - addressLabel
+        - address
+        - txid
+        - direction
+        - amountSats
+        - status
+        - detectedAt
+
+    ActivityPage:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertEvent"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+      required:
+        - events
+        - total
+        - limit
+        - offset
+
+    TestAlertResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+        - message
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: string
+      required:
+        - error

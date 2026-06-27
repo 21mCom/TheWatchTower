@@ -1,0 +1,32 @@
+manifestVersion: 1
+id: the-watchtower
+category: bitcoin
+name: The Watchtower
+version: "1.0.0"
+tagline: Monitor Bitcoin addresses via your own node
+description: >-
+  The Watchtower connects directly to your Bitcoin node's Electrum server
+  (Electrs or Fulcrum) and watches any addresses you choose. When coins move —
+  whether hitting the mempool or getting confirmed — you get an XMPP message
+  instantly. No third-party APIs, no external data. Your node, your keys, your
+  alerts.
+
+releaseNotes: >-
+  Initial release. Supports P2PKH, P2SH, P2WPKH, P2WSH, and P2TR address
+  types. Alerts on mempool detection and block confirmation. Configurable XMPP
+  endpoint for notifications.
+
+developer: The Watchtower
+website: https://github.com/your-org/watchtower
+dependencies:
+  - electrs
+repo: https://github.com/your-org/watchtower
+support: https://github.com/your-org/watchtower/issues
+port: 3000
+gallery:
+  - 1.jpg
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: The Watchtower
+submission: https://github.com/your-org/watchtower
