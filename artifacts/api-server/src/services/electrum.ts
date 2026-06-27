@@ -36,39 +36,78 @@ export class ElectrumClient extends EventEmitter {
 
   async connect(): Promise<void> {
     if (this.destroyed) throw new Error("Client has been destroyed");
+
     return new Promise((resolve, reject) => {
-      const onConnectError = (err: Error) => reject(err);
-
-      if (this.useTls) {
-        const sock = tls.connect(
-          { host: this.host, port: this.port, rejectUnauthorized: false },
-          () => {
-            this.attachSocket(sock);
-            resolve();
-          },
-        );
-        sock.once("error", onConnectError);
-        this.socket = sock;
-      } else {
-        const sock = net.connect({ host: this.host, port: this.port }, () => {
-          this.attachSocket(sock);
+      let settled = false;
+      const settle = (err?: Error) => {
+        if (settled) return;
+        settled = true;
+        if (err) {
+          reject(err);
+          // Even on initial failure, schedule reconnect
+          if (!this.destroyed) {
+            this.reconnectTimer = setTimeout(() => this.reconnect(), 10_000);
+          }
+        } else {
           resolve();
-        });
-        sock.once("error", onConnectError);
-        this.socket = sock;
-      }
-    });
-  }
+        }
+      };
 
-  private attachSocket(sock: net.Socket | tls.TLSSocket) {
-    this._connected = true;
-    this.buffer = "";
-    sock.on("data", (data: Buffer) => this.onData(data.toString()));
-    sock.on("close", () => this.onClose());
-    sock.on("error", (err: Error) => {
-      this.emit("error", err);
+      const createSocket = (): net.Socket | tls.TLSSocket => {
+        if (this.useTls) {
+          return tls.connect({ host: this.host, port: this.port, rejectUnauthorized: false });
+        }
+        return net.connect({ host: this.host, port: this.port });
+      };
+
+      const sock = createSocket();
+      this.socket = sock;
+
+      // Attach all lifecycle handlers immediately before any event can fire
+      sock.on("connect", () => {
+        this._connected = true;
+        this.buffer = "";
+        this.emit("connected");
+        settle(); // resolve the connect() promise
+      });
+
+      sock.on("secureConnect", () => {
+        // For TLS, 'secureConnect' fires instead of 'connect'
+        if (!this._connected) {
+          this._connected = true;
+          this.buffer = "";
+          this.emit("connected");
+          settle();
+        }
+      });
+
+      sock.on("data", (data: Buffer) => this.onData(data.toString()));
+
+      sock.on("close", () => {
+        this._connected = false;
+        this.socket = null;
+        // Reject all pending requests
+        for (const req of this.pending.values()) {
+          req.reject(new Error("Connection closed"));
+        }
+        this.pending.clear();
+        this.emit("disconnected");
+        // Schedule reconnect (even if we never successfully connected)
+        if (!this.destroyed) {
+          if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = setTimeout(() => this.reconnect(), 10_000);
+        }
+      });
+
+      sock.on("error", (err: Error) => {
+        // Only propagate if there are listeners — unhandled error events crash Node.js
+        if (this.listenerCount("error") > 0) {
+          this.emit("error", err);
+        }
+        settle(err); // reject the connect() promise if still pending
+        // 'close' fires after 'error'; the close handler schedules the reconnect
+      });
     });
-    this.emit("connected");
   }
 
   private onData(data: string) {
@@ -87,7 +126,7 @@ export class ElectrumClient extends EventEmitter {
         };
         this.handleMessage(msg);
       } catch {
-        // ignore malformed messages
+        // ignore malformed
       }
     }
   }
@@ -124,32 +163,24 @@ export class ElectrumClient extends EventEmitter {
     }
   }
 
-  private onClose() {
-    this._connected = false;
-    this.socket = null;
-
-    for (const req of this.pending.values()) {
-      req.reject(new Error("Connection closed"));
-    }
-    this.pending.clear();
-
-    this.emit("disconnected");
-
-    if (!this.destroyed) {
-      this.reconnectTimer = setTimeout(() => this.reconnect(), 10_000);
-    }
-  }
-
   private async reconnect() {
     if (this.destroyed) return;
+    this.reconnectTimer = null;
     try {
       await this.connect();
-      await this.rpc("server.ping", []);
-      const headerResult = await this.rpc("blockchain.headers.subscribe", []) as { height?: number };
-      if (headerResult?.height != null) this._blockHeight = headerResult.height;
+      // Restore header subscription
+      await this.rpc("blockchain.headers.subscribe", []).then((r) => {
+        const result = r as { height?: number };
+        if (result?.height != null) this._blockHeight = result.height;
+      }).catch(() => {});
 
+      // Re-subscribe all tracked scripthashes and trigger catch-up
       for (const sh of this.subscriptions) {
-        await this.rpc("blockchain.scripthash.subscribe", [sh]);
+        const status = await this.rpc("blockchain.scripthash.subscribe", [sh]).catch(() => null);
+        // Emit as a notification so the monitor can catch up
+        if (status !== undefined) {
+          this.notificationHandler?.(sh, status as string | null);
+        }
       }
       this.emit("reconnected");
     } catch {
@@ -186,6 +217,11 @@ export class ElectrumClient extends EventEmitter {
     return result;
   }
 
+  /**
+   * Subscribe to a scripthash and return the current status string.
+   * null means no history. Any non-null value means there is history —
+   * callers should fetch it immediately to catch up on missed transactions.
+   */
   async subscribeScripthash(scripthash: string): Promise<string | null> {
     this.subscriptions.add(scripthash);
     return this.rpc("blockchain.scripthash.subscribe", [scripthash]) as Promise<string | null>;

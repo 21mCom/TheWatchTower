@@ -89,29 +89,43 @@ function readVarInt(buf: Buffer, offset: number): [number, number] {
   return [Number(buf.readBigUInt64LE(offset + 1)), 9];
 }
 
+export interface TxInput {
+  prevhash: string;
+  previndex: number;
+}
+
 export interface TxOutput {
   valueSats: number;
   scriptHex: string;
   scripthash: string;
 }
 
-export function decodeRawTxOutputs(hex: string): TxOutput[] {
+/**
+ * Decode inputs AND outputs from a raw transaction hex.
+ * Works for legacy and segwit (marker/flag bytes detected automatically).
+ */
+export function decodeRawTx(hex: string): { inputs: TxInput[]; outputs: TxOutput[] } {
   const buf = Buffer.from(hex, "hex");
   let offset = 4; // skip version
 
-  // segwit marker
-  if (buf[offset] === 0x00) {
-    offset += 2; // skip marker and flag
+  // segwit: marker=0x00, flag!=0x00
+  if (buf[offset] === 0x00 && buf.length > offset + 1 && buf[offset + 1] !== 0x00) {
+    offset += 2;
   }
 
   // inputs
   const [inCount, inCountLen] = readVarInt(buf, offset);
   offset += inCountLen;
+  const inputs: TxInput[] = [];
   for (let i = 0; i < inCount; i++) {
-    offset += 36; // prevhash + previndex
+    const prevhash = Buffer.from(buf.subarray(offset, offset + 32)).reverse().toString("hex");
+    offset += 32;
+    const previndex = buf.readUInt32LE(offset);
+    offset += 4;
     const [scriptLen, scriptLenLen] = readVarInt(buf, offset);
     offset += scriptLenLen + scriptLen;
     offset += 4; // sequence
+    inputs.push({ prevhash, previndex });
   }
 
   // outputs
@@ -125,8 +139,12 @@ export function decodeRawTxOutputs(hex: string): TxOutput[] {
     offset += scriptLenLen;
     const script = buf.subarray(offset, offset + scriptLen);
     offset += scriptLen;
-    const scripthash = toScripthash(script);
-    outputs.push({ valueSats, scriptHex: script.toString("hex"), scripthash });
+    outputs.push({ valueSats, scriptHex: script.toString("hex"), scripthash: toScripthash(script) });
   }
-  return outputs;
+  return { inputs, outputs };
+}
+
+/** Kept for backward compatibility */
+export function decodeRawTxOutputs(hex: string): TxOutput[] {
+  return decodeRawTx(hex).outputs;
 }

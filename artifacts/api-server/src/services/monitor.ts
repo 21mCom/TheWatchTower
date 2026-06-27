@@ -4,7 +4,7 @@ import { watchedAddresses, appSettings, alertEvents } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { ElectrumClient } from "./electrum.js";
 import { XmppService } from "./xmpp.js";
-import { decodeRawTxOutputs } from "./bitcoin.js";
+import { decodeRawTx } from "./bitcoin.js";
 import { logger } from "../lib/logger.js";
 
 interface NodeStatus {
@@ -73,6 +73,11 @@ async function loadSettingsAndConnect() {
     settings.electrumTls,
   );
 
+  // Swallow socket errors so they don't crash the process; reconnect handles recovery
+  client.on("error", (err: Error) => {
+    logger.warn({ err: err.message }, "[monitor] Electrum socket error");
+  });
+
   client.on("connected", async () => {
     logger.info("[monitor] Electrum connected");
     nodeStatus = { connected: true, blockHeight: null, message: null, lastCheckedAt: new Date() };
@@ -85,10 +90,11 @@ async function loadSettingsAndConnect() {
       logger.warn({ err }, "[monitor] subscribeHeaders failed");
     }
 
+    // Subscribe all addresses and catch up on any missed transactions
     await subscribeAllAddresses(client);
 
     if (xmpp.isConfigured() && xmpp.isConnected()) {
-      xmpp.sendAlert("🗼 Watchtower: Node connection restored.").catch(() => {});
+      xmpp.sendAlert("Watchtower: Node connection restored.").catch(() => {});
     }
   });
 
@@ -101,11 +107,11 @@ async function loadSettingsAndConnect() {
       lastCheckedAt: new Date(),
     };
     if (xmpp.isConfigured() && xmpp.isConnected()) {
-      xmpp.sendAlert("⚠️ Watchtower: Lost connection to Bitcoin node.").catch(() => {});
+      xmpp.sendAlert("WARNING Watchtower: Lost connection to Bitcoin node.").catch(() => {});
     }
   });
 
-  client.on("reconnected", async () => {
+  client.on("reconnected", () => {
     nodeStatus = { connected: true, blockHeight: client.blockHeight, message: null, lastCheckedAt: new Date() };
   });
 
@@ -114,10 +120,12 @@ async function loadSettingsAndConnect() {
     nodeStatus.lastCheckedAt = new Date();
   });
 
+  // Notification handler: fires both on live events and on reconnect catch-up
   client.setNotificationHandler((scripthash, status) => {
     if (status !== null) {
-      handleScripthashNotification(scripthash).catch((err) => {
-        logger.error({ err, scripthash }, "[monitor] notification handling failed");
+      // status is a hash of the full history — any non-null value means activity to process
+      processScripthashHistory(scripthash, client).catch((err) => {
+        logger.error({ err, scripthash }, "[monitor] history processing failed");
       });
     }
   });
@@ -126,45 +134,62 @@ async function loadSettingsAndConnect() {
     await client.connect();
     electrum = client;
   } catch (err) {
-    logger.error({ err }, "[monitor] Electrum connect failed");
+    logger.error({ err }, "[monitor] Electrum initial connect failed — will retry");
     nodeStatus = {
       connected: false,
       blockHeight: null,
       message: `Connection failed: ${(err as Error).message}`,
       lastCheckedAt: new Date(),
     };
-    electrum = client; // keep it so reconnect can work
+    // client is kept; it will auto-reconnect via its internal timer
+    electrum = client;
   }
 }
 
+/**
+ * Subscribe each watched address to Electrum.
+ * If the subscribe call returns a non-null status, there is history to catch up on —
+ * so we immediately process it. This handles transactions that occurred while offline.
+ */
 async function subscribeAllAddresses(client: ElectrumClient) {
   const addresses = await db.select().from(watchedAddresses);
   for (const addr of addresses) {
     try {
-      await client.subscribeScripthash(addr.scripthash);
+      const status = await client.subscribeScripthash(addr.scripthash);
+      // Non-null status means there's history — fetch and process immediately
+      if (status !== null) {
+        await processScripthashHistory(addr.scripthash, client);
+      }
     } catch (err) {
-      logger.warn({ err, address: addr.address }, "[monitor] subscribe failed");
+      logger.warn({ err, address: addr.address }, "[monitor] subscribe/catch-up failed");
     }
   }
-  logger.info({ count: addresses.length }, "[monitor] Subscribed to addresses");
+  logger.info({ count: addresses.length }, "[monitor] Subscribed to all addresses");
 }
 
-async function handleScripthashNotification(scripthash: string) {
-  if (!electrum) return;
-
+/**
+ * Fetch the full history for a scripthash and process any new or updated transactions.
+ * Safe to call multiple times — deduplicates via the alert_events table.
+ */
+async function processScripthashHistory(scripthash: string, client: ElectrumClient) {
   const [watched] = await db
     .select()
     .from(watchedAddresses)
     .where(eq(watchedAddresses.scripthash, scripthash));
   if (!watched) return;
 
-  const history = await electrum.getHistory(scripthash);
+  let history: { tx_hash: string; height: number }[];
+  try {
+    history = await client.getHistory(scripthash);
+  } catch (err) {
+    logger.warn({ err, scripthash }, "[monitor] getHistory failed");
+    return;
+  }
 
   for (const entry of history) {
     const { tx_hash: txid, height } = entry;
     const status = height === 0 ? "mempool" : "confirmed";
 
-    // Check if we already have this event
     const existing = await db
       .select()
       .from(alertEvents)
@@ -172,59 +197,101 @@ async function handleScripthashNotification(scripthash: string) {
       .limit(1);
 
     if (existing.length === 0) {
-      // New transaction
-      let amountSats = 0;
-      let direction: "incoming" | "outgoing" = "incoming";
-
-      try {
-        const rawTx = await electrum.getTransaction(txid);
-        const outputs = decodeRawTxOutputs(rawTx);
-        const ours = outputs.filter((o) => o.scripthash === scripthash);
-        if (ours.length > 0) {
-          amountSats = ours.reduce((sum, o) => sum + o.valueSats, 0);
-          direction = "incoming";
-        } else {
-          // No outputs to us — this is a spend
-          direction = "outgoing";
-          amountSats = 0; // hard to calculate without prevout lookups
-        }
-      } catch (err) {
-        logger.warn({ err, txid }, "[monitor] Failed to decode transaction");
-      }
-
-      const id = crypto.randomUUID();
-      const now = new Date();
-
-      await db.insert(alertEvents).values({
-        id,
-        addressId: watched.id,
-        txid,
-        direction,
-        amountSats,
-        status,
-        blockHeight: height > 0 ? height : null,
-        mempoolAlertedAt: status === "mempool" ? now : null,
-        confirmedAlertedAt: status === "confirmed" ? now : null,
-      });
-
-      await sendTransactionAlert(watched.label, watched.address, txid, direction, amountSats, status, height);
+      // New transaction — decode it to determine direction and amount
+      await processNewTx(watched.id, watched.label, watched.address, scripthash, txid, height, status, client);
     } else {
       const evt = existing[0]!;
-      // If previously mempool and now confirmed
+      // Upgrade mempool → confirmed
       if (evt.status === "mempool" && status === "confirmed") {
         await db
           .update(alertEvents)
-          .set({
-            status: "confirmed",
-            blockHeight: height,
-            confirmedAlertedAt: new Date(),
-          })
+          .set({ status: "confirmed", blockHeight: height, confirmedAlertedAt: new Date() })
           .where(eq(alertEvents.id, evt.id));
 
-        await sendTransactionAlert(watched.label, watched.address, txid, evt.direction, evt.amountSats, "confirmed", height);
+        await sendTransactionAlert(
+          watched.label,
+          watched.address,
+          txid,
+          evt.direction,
+          evt.amountSats,
+          "confirmed",
+          height,
+        );
       }
     }
   }
+}
+
+/**
+ * Decode a raw transaction to determine direction and amount for a watched address.
+ *
+ * Incoming: one or more outputs pay to our scripthash → sum those output values.
+ * Outgoing: no outputs pay to us → this is a spend.
+ *   To find the outgoing amount, look up each input's previous transaction,
+ *   find the output that corresponds to the prevout index, and sum values where
+ *   the prevout's scripthash matches ours.
+ */
+async function processNewTx(
+  addressId: string,
+  label: string,
+  address: string,
+  scripthash: string,
+  txid: string,
+  height: number,
+  status: "mempool" | "confirmed",
+  client: ElectrumClient,
+) {
+  let amountSats = 0;
+  let direction: "incoming" | "outgoing" = "incoming";
+
+  try {
+    const rawTx = await client.getTransaction(txid);
+    const { inputs, outputs } = decodeRawTx(rawTx);
+
+    // Check if any output pays to our address
+    const ourOutputs = outputs.filter((o) => o.scripthash === scripthash);
+    if (ourOutputs.length > 0) {
+      direction = "incoming";
+      amountSats = ourOutputs.reduce((sum, o) => sum + o.valueSats, 0);
+    } else {
+      // No outputs to us — this is a spend originating from our address
+      direction = "outgoing";
+      // Calculate the amount spent by summing prevouts that belong to our address
+      let spentSats = 0;
+      for (const input of inputs) {
+        try {
+          const prevRaw = await client.getTransaction(input.prevhash);
+          const { outputs: prevOutputs } = decodeRawTx(prevRaw);
+          const prevOut = prevOutputs[input.previndex];
+          if (prevOut && prevOut.scripthash === scripthash) {
+            spentSats += prevOut.valueSats;
+          }
+        } catch (err) {
+          logger.warn({ err, prevhash: input.prevhash }, "[monitor] prevout lookup failed");
+        }
+      }
+      amountSats = spentSats;
+    }
+  } catch (err) {
+    logger.warn({ err, txid }, "[monitor] Failed to decode transaction");
+  }
+
+  const id = crypto.randomUUID();
+  const now = new Date();
+
+  await db.insert(alertEvents).values({
+    id,
+    addressId,
+    txid,
+    direction,
+    amountSats,
+    status,
+    blockHeight: height > 0 ? height : null,
+    mempoolAlertedAt: status === "mempool" ? now : null,
+    confirmedAlertedAt: status === "confirmed" ? now : null,
+  });
+
+  await sendTransactionAlert(label, address, txid, direction, amountSats, status, height);
 }
 
 async function sendTransactionAlert(
@@ -238,13 +305,12 @@ async function sendTransactionAlert(
 ) {
   if (!xmpp.isConfigured() || !xmpp.isConnected()) return;
 
-  const arrow = direction === "incoming" ? "📥" : "📤";
-  const sign = direction === "incoming" ? "+" : "−";
+  const sign = direction === "incoming" ? "+" : "-";
   const btc = (amountSats / 1e8).toFixed(8);
-  const statusLabel = status === "mempool" ? "⏳ mempool" : `✅ confirmed (block ${height})`;
+  const statusLabel = status === "mempool" ? "mempool" : `confirmed (block ${height})`;
 
   const msg =
-    `${arrow} [${direction.toUpperCase()}] ${label}\n` +
+    `[${direction.toUpperCase()}] ${label}\n` +
     `Amount: ${sign}${btc} BTC (${amountSats.toLocaleString()} sats)\n` +
     `Address: ${address}\n` +
     `Txid: ${txid}\n` +
@@ -259,12 +325,15 @@ async function sendTransactionAlert(
 
 export async function subscribeAddress(scripthash: string) {
   if (!electrum || !electrum.connected) return;
-  await electrum.subscribeScripthash(scripthash);
+  const status = await electrum.subscribeScripthash(scripthash);
+  // Catch up on any existing history for this newly-added address
+  if (status !== null && electrum) {
+    await processScripthashHistory(scripthash, electrum);
+  }
 }
 
 export async function unsubscribeAddress(scripthash: string) {
-  if (!electrum) return;
-  electrum.removeScripthash(scripthash);
+  electrum?.removeScripthash(scripthash);
 }
 
 export async function reloadMonitor() {

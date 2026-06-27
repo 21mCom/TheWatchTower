@@ -1,15 +1,10 @@
 #!/bin/sh
 set -e
 
-# Run DB migrations
-echo "Running DB migrations..."
-node /app/server/dist/migrate.mjs || true
+# Run DB schema push / migrations before starting
+echo "Running DB push..."
+node /app/server/dist/migrate.mjs 2>/dev/null || true
 
-# Start API server in background on port 8080
-echo "Starting API server..."
-PORT=8080 node --enable-source-maps /app/server/dist/index.mjs &
-
-# Start static file server + proxy on port 3000
-# Serve frontend at / and proxy /api to localhost:8080
-echo "Starting web server..."
-exec serve /app/public -l 3000 --no-clipboard
+# Start the Express server (serves both /api and static files)
+echo "Starting Watchtower server on port ${PORT:-3000}..."
+exec PORT="${PORT:-3000}" STATIC_DIR="/app/public" node --enable-source-maps /app/server/dist/index.mjs
