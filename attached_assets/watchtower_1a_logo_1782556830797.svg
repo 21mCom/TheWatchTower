@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1600" viewBox="0 0 1600 1600">
+  <title>The Watchtower Bitcoin Lighthouse Logo 1a</title>
+  <desc id="desc">A minimalist vector lighthouse with a Bitcoin symbol as the light source and orange beacon beams.</desc>
+  <defs>
+    <linearGradient id="beamFadeLeft" x1="100%" y1="50%" x2="0%" y2="50%">
+      <stop offset="0%" stop-color="#F7931A" stop-opacity="0.92"/>
+      <stop offset="62%" stop-color="#F7931A" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#F7931A" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="beamFadeRight" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#F7931A" stop-opacity="0.92"/>
+      <stop offset="62%" stop-color="#F7931A" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#F7931A" stop-opacity="0"/>
+    </linearGradient>
+    
+      
+      
+        
+        
+      
+    
+  </defs>
+
+  <rect width="1600" height="1600" fill="#FFFFFF"/>
+
+  
+  <g opacity="0.95">
+    <polygon points="700,470 120,330 120,610" fill="url(#beamFadeLeft)"/>
+    <polygon points="900,470 1480,330 1480,610" fill="url(#beamFadeRight)"/>
+    <polygon points="700,470 120,430 120,510" fill="#FFFFFF" opacity="0.45"/>
+    <polygon points="900,470 1480,430 1480,510" fill="#FFFFFF" opacity="0.45"/>
+  </g>
+
+  
+  <g fill="#111820">
+    <path d="M369 1210 L472 1147 L581 1147 L636 1099 L743 1128 L800 1089 L856 1128 L964 1099 L1019 1147 L1128 1147 L1231 1210 Z"/>
+    <path d="M258 1251 C356 1219 422 1219 515 1249 C610 1280 679 1280 770 1250 C871 1218 940 1218 1044 1251 C1140 1281 1202 1281 1342 1250 L1342 1290 C1216 1320 1122 1321 1022 1291 C926 1261 872 1261 780 1290 C674 1323 594 1323 492 1291 C395 1261 337 1262 258 1290 Z" opacity="0.96"/>
+    <path d="M350 1340 C437 1314 500 1314 584 1340 C671 1367 733 1367 819 1340 C909 1313 972 1313 1061 1340 C1150 1368 1221 1368 1305 1340" fill="none" stroke="#111820" stroke-width="30" stroke-linecap="round"/>
+  </g>
+
+  
+  <g>
+    <path d="M640 1138 L704 613 L896 613 L960 1138 Z" fill="#111820"/>
+    <path d="M704 613 L640 1138 L587 1147 L656 604 Z" fill="#0D1218" opacity="0.9"/>
+    <path d="M896 613 L960 1138 L1013 1147 L944 604 Z" fill="#1B242D" opacity="0.55"/>
+
+    
+    <path d="M748 1138 L748 1000 C748 966 771 943 800 943 C829 943 852 966 852 1000 L852 1138 Z" fill="#FFFFFF"/>
+    <rect x="782" y="776" width="36" height="104" rx="18" fill="#FFFFFF"/>
+    <rect x="783" y="660" width="34" height="78" rx="17" fill="#FFFFFF"/>
+  </g>
+
+  
+  <g fill="#111820">
+    <rect x="558" y="552" width="484" height="42" rx="12"/>
+    <rect x="604" y="585" width="392" height="28" rx="8"/>
+    <rect x="590" y="504" width="420" height="30" rx="8"/>
+    <rect x="625" y="491" width="26" height="94"/>
+    <rect x="949" y="491" width="26" height="94"/>
+    <rect x="698" y="494" width="22" height="90"/>
+    <rect x="880" y="494" width="22" height="90"/>
+  </g>
+
+  
+  <g>
+    <path d="M620 338 L980 338 L930 502 L670 502 Z" fill="#111820"/>
+    <path d="M682 381 L918 381 L894 498 L706 498 Z" fill="#FFFFFF"/>
+    <rect x="727" y="381" width="34" height="117" fill="#111820" opacity="0.9"/>
+    <rect x="839" y="381" width="34" height="117" fill="#111820" opacity="0.9"/>
+    <path d="M591 326 L800 222 L1009 326 L980 361 L620 361 Z" fill="#111820"/>
+    <rect x="778" y="176" width="44" height="74" rx="10" fill="#111820"/>
+    <path d="M800 116 L831 184 L769 184 Z" fill="#111820"/>
+  </g>
+
+  
+  <g>
+    <circle cx="800" cy="443" r="86" fill="#F7931A"/>
+    <circle cx="800" cy="443" r="86" fill="none" stroke="#F5C15B" stroke-width="8" opacity="0.55"/>
+  </g>
+  <g fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-weight="700" text-anchor="middle">
+    <text x="800" y="494" font-size="140">₿</text>
+  </g>
+
+  
+  <g fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" opacity="0.92">
+    <path d="M504 1192 L584 1170 L650 1174"/>
+    <path d="M737 1152 L801 1118 L864 1151"/>
+    <path d="M955 1173 L1020 1170 L1098 1192"/>
+  </g>
+</svg>
