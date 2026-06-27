@@ -42,6 +42,9 @@ const TEST_ADDRESS_LABEL = "Test Loop Address";
 // A unique fake txid for this test
 const TEST_TXID = "cc".repeat(32);
 
+// A second distinct txid used in the multi-tx-same-block test
+const TEST_TXID_2 = "dd".repeat(32);
+
 // Minimal raw transaction paying 50 000 sats to OUTPUT_SCRIPT_HEX (same layout as
 // the monitor-reconnect test — only the witness program byte at the end differs).
 const RAW_TX_HEX =
@@ -416,5 +419,69 @@ test("concurrent processScripthashHistory calls on a mempool tx produce exactly 
     `Expected exactly 1 confirmed-alert send after two concurrent processScripthashHistory calls ` +
       `on a mempool tx, but sendTransactionAlert was called ${alertSendCount} time(s). ` +
       `The guarded UPDATE WHERE status='mempool' in the upgrade branch may not be working.`,
+  );
+});
+
+test("two distinct txids in the same history response each produce exactly one alert row and one send attempt", async () => {
+  const client = getElectrumClient();
+  assert.ok(client !== null, "ElectrumClient must be active for this test");
+
+  // Clean up any alert rows left from previous tests so we start fresh.
+  await db
+    .delete(alertEvents)
+    .where(eq(alertEvents.addressId, TEST_ADDR_ID));
+
+  // Extend the shared mock history with a second confirmed transaction.
+  // Both entries share the same height (same block) — this exercises the
+  // outer for-loop in processScripthashHistory across multiple entries.
+  mockHistory.push({ tx_hash: TEST_TXID_2, height: 800_000 });
+
+  // Reset the send-attempt counter so only the calls below are counted.
+  _resetAlertSendAttempts();
+
+  try {
+    // A single processScripthashHistory call must process both entries and
+    // insert two distinct alert_events rows — one per txid.
+    await processScripthashHistory(TEST_SCRIPTHASH, client!);
+  } finally {
+    // Always restore the original single-entry history so subsequent tests
+    // (or reconnect-triggered catch-ups) are not affected.
+    mockHistory.pop();
+  }
+
+  // ── Assert: exactly two rows, one per txid ───────────────────────────────
+  const [{ n: totalRows }] = await db
+    .select({ n: count() })
+    .from(alertEvents)
+    .where(eq(alertEvents.addressId, TEST_ADDR_ID));
+
+  assert.equal(
+    totalRows,
+    2,
+    `Expected exactly 2 alert_events rows (one per txid) after processing a ` +
+      `two-entry history response, but found ${totalRows}. ` +
+      `The per-entry deduplication loop may be skipping or merging entries.`,
+  );
+
+  // Verify each txid has its own distinct row.
+  for (const txid of [TEST_TXID, TEST_TXID_2]) {
+    const [{ n }] = await db
+      .select({ n: count() })
+      .from(alertEvents)
+      .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, txid)));
+    assert.equal(
+      n,
+      1,
+      `Expected exactly 1 alert_events row for txid ${txid.slice(0, 8)}… but found ${n}.`,
+    );
+  }
+
+  // ── Assert: exactly two send attempts, one per txid ─────────────────────
+  const sendCount = _getAlertSendAttempts();
+  assert.equal(
+    sendCount,
+    2,
+    `Expected _getAlertSendAttempts() === 2 after processing two new confirmed txids, ` +
+      `but got ${sendCount}. One or more per-entry alert sends were skipped or doubled.`,
   );
 });
