@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useListActivity } from "@workspace/api-client-react";
+import { useListActivity, getListActivityQueryKey } from "@workspace/api-client-react";
 import { formatBtc, truncateAddress, formatTimeAgo } from "@/lib/format";
 
 export default function Activity() {
   const [filter, setFilter] = useState<"ALL" | "IN" | "OUT" | "MEMPOOL">("ALL");
-  const { data: activityPage, isLoading } = useListActivity({ query: { refetchInterval: 30000 }});
+  const { data: activityPage, isLoading } = useListActivity(undefined, { query: { queryKey: getListActivityQueryKey(), refetchInterval: 30000 }});
 
   let events = activityPage?.events || [];
   

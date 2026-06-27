@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { useGetSettings, useUpdateSettings, useSendTestAlert, useGetNodeStatus, getGetSettingsQueryKey } from "@workspace/api-client-react";
+import { useGetSettings, useUpdateSettings, useSendTestAlert, useGetNodeStatus, getGetSettingsQueryKey, getGetNodeStatusQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Settings() {
   const { data: settings, isLoading } = useGetSettings();
-  const { data: nodeStatus } = useGetNodeStatus({ query: { refetchInterval: 10000 }});
+  const { data: nodeStatus } = useGetNodeStatus({ query: { queryKey: getGetNodeStatusQueryKey(), refetchInterval: 10000 }});
   
   const updateSettings = useUpdateSettings();
   const sendTestAlert = useSendTestAlert();

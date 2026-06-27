@@ -1,9 +1,9 @@
-import { useListAddresses, useListActivity } from "@workspace/api-client-react";
+import { useListAddresses, useListActivity, getListActivityQueryKey } from "@workspace/api-client-react";
 import { formatBtc, truncateAddress, formatTimeAgo } from "@/lib/format";
 
 export default function Dashboard() {
   const { data: addresses } = useListAddresses();
-  const { data: activityPage } = useListActivity({ query: { refetchInterval: 30000 }});
+  const { data: activityPage } = useListActivity(undefined, { query: { queryKey: getListActivityQueryKey(), refetchInterval: 30000 }});
 
   const addressesData = addresses || [];
   const events = activityPage?.events || [];

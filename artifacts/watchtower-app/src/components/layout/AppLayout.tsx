@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { useGetNodeStatus } from "@workspace/api-client-react";
+import { useGetNodeStatus, getGetNodeStatusQueryKey } from "@workspace/api-client-react";
 import { useTheme } from "@/lib/theme";
 import logoSvg from "@/assets/logo-shield.png";
 
@@ -56,7 +56,7 @@ export function Topbar() {
   const [nodeStatus, setNodeStatus] = useState<"connected" | "disconnected">("disconnected");
 
   const { data: status } = useGetNodeStatus({
-    query: { refetchInterval: 10000 }
+    query: { queryKey: getGetNodeStatusQueryKey(), refetchInterval: 10000 }
   });
 
   useEffect(() => {
