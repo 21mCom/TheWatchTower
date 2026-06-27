@@ -302,9 +302,9 @@ test(
     const origIsConfigured = xmppSvc.isConfigured.bind(xmppSvc);
     const origIsConnected = xmppSvc.isConnected.bind(xmppSvc);
     const origSendAlert = xmppSvc.sendAlert.bind(xmppSvc);
-    (xmppSvc as Record<string, unknown>).isConfigured = () => true;
-    (xmppSvc as Record<string, unknown>).isConnected = () => true;
-    (xmppSvc as Record<string, unknown>).sendAlert = async (msg: string) => {
+    (xmppSvc as unknown as Record<string, unknown>).isConfigured = () => true;
+    (xmppSvc as unknown as Record<string, unknown>).isConnected = () => true;
+    (xmppSvc as unknown as Record<string, unknown>).sendAlert = async (msg: string) => {
       // Only count alerts for the specific transaction under test.
       // The monitor also sends "Watchtower: Node connection restored." on connect,
       // which must not be counted as a transaction-confirmed alert.
@@ -401,9 +401,9 @@ test(
       );
     } finally {
       // Restore original XMPP methods so other tests aren't affected.
-      (xmppSvc as Record<string, unknown>).isConfigured = origIsConfigured;
-      (xmppSvc as Record<string, unknown>).isConnected = origIsConnected;
-      (xmppSvc as Record<string, unknown>).sendAlert = origSendAlert;
+      (xmppSvc as unknown as Record<string, unknown>).isConfigured = origIsConfigured;
+      (xmppSvc as unknown as Record<string, unknown>).isConnected = origIsConnected;
+      (xmppSvc as unknown as Record<string, unknown>).sendAlert = origSendAlert;
     }
   },
 );

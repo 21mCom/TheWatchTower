@@ -10,6 +10,7 @@ export interface AppSettingsUpdate {
   electrumHost?: string;
   electrumPort?: number;
   electrumTls?: boolean;
+  electrumAllowSelfSigned?: boolean;
   confirmationThreshold?: number;
   xmppServer?: string;
   xmppPort?: number;

@@ -86,6 +86,7 @@ async function loadSettingsAndConnect() {
     settings.electrumPort,
     settings.electrumTls,
     reconnectDelayMs,
+    settings.electrumAllowSelfSigned,
   );
 
   // Swallow socket errors so they don't crash the process; reconnect handles recovery

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { db } from "@workspace/db";
 import { appSettings } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -6,6 +7,15 @@ import { UpdateSettingsBody } from "@workspace/api-zod";
 import { getXmpp, reloadMonitor } from "../services/monitor.js";
 
 const router = Router();
+
+// Tight rate limit for write/action endpoints — 10 req/min per IP
+const settingsWriteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please slow down." },
+});
 
 async function getOrCreateSettings() {
   const [s] = await db.select().from(appSettings).limit(1);
@@ -21,6 +31,7 @@ router.get("/", async (_req, res) => {
     electrumHost: s.electrumHost,
     electrumPort: s.electrumPort,
     electrumTls: s.electrumTls,
+    electrumAllowSelfSigned: s.electrumAllowSelfSigned,
     confirmationThreshold: s.confirmationThreshold,
     xmppServer: s.xmppServer,
     xmppPort: s.xmppPort,
@@ -32,7 +43,7 @@ router.get("/", async (_req, res) => {
 });
 
 // PUT /settings
-router.put("/", async (req, res) => {
+router.put("/", settingsWriteLimiter, async (req, res) => {
   const parsed = UpdateSettingsBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.message });
@@ -46,6 +57,7 @@ router.put("/", async (req, res) => {
   if (data.electrumHost !== undefined) updates.electrumHost = data.electrumHost;
   if (data.electrumPort !== undefined) updates.electrumPort = data.electrumPort;
   if (data.electrumTls !== undefined) updates.electrumTls = data.electrumTls;
+  if (data.electrumAllowSelfSigned !== undefined) updates.electrumAllowSelfSigned = data.electrumAllowSelfSigned;
   if (data.confirmationThreshold !== undefined) updates.confirmationThreshold = data.confirmationThreshold;
   if (data.xmppServer !== undefined) updates.xmppServer = data.xmppServer;
   if (data.xmppPort !== undefined) updates.xmppPort = data.xmppPort;
@@ -67,6 +79,7 @@ router.put("/", async (req, res) => {
     electrumHost: s.electrumHost,
     electrumPort: s.electrumPort,
     electrumTls: s.electrumTls,
+    electrumAllowSelfSigned: s.electrumAllowSelfSigned,
     confirmationThreshold: s.confirmationThreshold,
     xmppServer: s.xmppServer,
     xmppPort: s.xmppPort,
@@ -78,7 +91,7 @@ router.put("/", async (req, res) => {
 });
 
 // POST /settings/test-alert
-router.post("/test-alert", async (_req, res) => {
+router.post("/test-alert", settingsWriteLimiter, async (_req, res) => {
   const xmpp = getXmpp();
   if (!xmpp.isConfigured()) {
     res.json({ success: false, message: "XMPP is not configured. Please set server, JID, password, and recipient." });

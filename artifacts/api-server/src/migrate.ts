@@ -36,19 +36,24 @@ async function main() {
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS app_settings (
-        id                     INTEGER PRIMARY KEY DEFAULT 1,
-        electrum_host          TEXT NOT NULL DEFAULT 'localhost',
-        electrum_port          INTEGER NOT NULL DEFAULT 50001,
-        electrum_tls           BOOLEAN NOT NULL DEFAULT FALSE,
-        xmpp_server            TEXT,
-        xmpp_port              INTEGER NOT NULL DEFAULT 5222,
-        xmpp_jid               TEXT,
-        xmpp_password          TEXT,
-        xmpp_tls               BOOLEAN NOT NULL DEFAULT TRUE,
-        recipient_jid          TEXT,
-        confirmation_threshold INTEGER NOT NULL DEFAULT 1,
-        updated_at             TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        id                          INTEGER PRIMARY KEY DEFAULT 1,
+        electrum_host               TEXT NOT NULL DEFAULT 'localhost',
+        electrum_port               INTEGER NOT NULL DEFAULT 50001,
+        electrum_tls                BOOLEAN NOT NULL DEFAULT FALSE,
+        electrum_allow_self_signed  BOOLEAN NOT NULL DEFAULT FALSE,
+        xmpp_server                 TEXT,
+        xmpp_port                   INTEGER NOT NULL DEFAULT 5222,
+        xmpp_jid                    TEXT,
+        xmpp_password               TEXT,
+        xmpp_tls                    BOOLEAN NOT NULL DEFAULT TRUE,
+        recipient_jid               TEXT,
+        confirmation_threshold      INTEGER NOT NULL DEFAULT 1,
+        updated_at                  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
+
+      -- Idempotent upgrade: add electrum_allow_self_signed to existing installs
+      ALTER TABLE app_settings
+        ADD COLUMN IF NOT EXISTS electrum_allow_self_signed BOOLEAN NOT NULL DEFAULT FALSE;
 
       INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 

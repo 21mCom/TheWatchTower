@@ -31,6 +31,7 @@ export class ElectrumClient extends EventEmitter {
     private port: number,
     private useTls: boolean,
     private reconnectDelayMs: number = 10_000,
+    private allowSelfSigned: boolean = false,
   ) {
     super();
   }
@@ -56,7 +57,11 @@ export class ElectrumClient extends EventEmitter {
 
       const createSocket = (): net.Socket | tls.TLSSocket => {
         if (this.useTls) {
-          return tls.connect({ host: this.host, port: this.port, rejectUnauthorized: false });
+          return tls.connect({
+            host: this.host,
+            port: this.port,
+            rejectUnauthorized: !this.allowSelfSigned,
+          });
         }
         return net.connect({ host: this.host, port: this.port });
       };

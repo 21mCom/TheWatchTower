@@ -7,6 +7,7 @@ export const appSettings = pgTable("app_settings", {
   electrumHost: text("electrum_host").notNull().default("localhost"),
   electrumPort: integer("electrum_port").notNull().default(50001),
   electrumTls: boolean("electrum_tls").notNull().default(false),
+  electrumAllowSelfSigned: boolean("electrum_allow_self_signed").notNull().default(false),
   confirmationThreshold: integer("confirmation_threshold").notNull().default(1),
   xmppServer: text("xmpp_server").notNull().default(""),
   xmppPort: integer("xmpp_port").notNull().default(5222),

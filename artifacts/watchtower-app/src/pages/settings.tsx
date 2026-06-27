@@ -16,6 +16,7 @@ export default function Settings() {
     electrumHost: "",
     electrumPort: 50001,
     electrumTls: false,
+    electrumAllowSelfSigned: false,
     confirmationThreshold: 1,
     xmppServer: "",
     xmppPort: 5222,
@@ -32,6 +33,7 @@ export default function Settings() {
         electrumHost: settings.electrumHost,
         electrumPort: settings.electrumPort,
         electrumTls: settings.electrumTls,
+        electrumAllowSelfSigned: settings.electrumAllowSelfSigned,
         confirmationThreshold: settings.confirmationThreshold,
         xmppServer: settings.xmppServer,
         xmppPort: settings.xmppPort,
@@ -78,6 +80,8 @@ export default function Settings() {
     }
   };
 
+  const showSelfSignedWarning = formData.electrumTls && formData.electrumAllowSelfSigned;
+
   if (isLoading) return <div style={{ padding: 24, color: "#4A6080" }}>Loading settings...</div>;
 
   return (
@@ -100,11 +104,31 @@ export default function Settings() {
             <div style={{ fontSize: 10, color: "#2A4060", letterSpacing: "0.08em", marginBottom: 4 }}>CONFIRMATION THRESHOLD</div>
             <input type="number" name="confirmationThreshold" value={formData.confirmationThreshold} onChange={handleChange} style={{ background: "#080D14", border: "1px solid #1E2D40", borderRadius: 4, color: "#CBD5E1", fontFamily: "inherit", fontSize: 12, padding: "7px 10px", width: "100%", outline: "none", boxSizing: "border-box" }} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 18 }}>
-            <input type="checkbox" name="electrumTls" checked={formData.electrumTls} onChange={handleChange} />
-            <span style={{ fontSize: 11, color: "#CBD5E1" }}>Use TLS (SSL)</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 18 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="checkbox" name="electrumTls" checked={formData.electrumTls} onChange={handleChange} />
+              <span style={{ fontSize: 11, color: "#CBD5E1" }}>Use TLS (SSL)</span>
+            </label>
+            {formData.electrumTls && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input type="checkbox" name="electrumAllowSelfSigned" checked={formData.electrumAllowSelfSigned} onChange={handleChange} />
+                <span style={{ fontSize: 11, color: "#CBD5E1" }}>Allow self-signed certificate</span>
+              </label>
+            )}
           </div>
         </div>
+
+        {/* Amber warning when self-signed mode is active */}
+        {showSelfSignedWarning && (
+          <div style={{ marginTop: 12, background: "#2A1A00", border: "1px solid #F7931A55", borderRadius: 4, padding: "8px 12px", display: "flex", gap: 8, alignItems: "flex-start" }}>
+            <span style={{ color: "#F7931A", fontSize: 13, flexShrink: 0, marginTop: 1 }}>⚠</span>
+            <span style={{ fontSize: 11, color: "#D4A04A", lineHeight: 1.5 }}>
+              <strong style={{ color: "#F7931A" }}>Certificate verification is disabled.</strong>{" "}
+              Your Electrum connection cannot detect man-in-the-middle attacks. Only enable this if your Electrs/Fulcrum server uses a self-signed certificate on your local network.
+            </span>
+          </div>
+        )}
+
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 7, height: 7, borderRadius: "50%", background: nodeStatus?.connected ? "#22C55E" : "#EF4444", boxShadow: nodeStatus?.connected ? "0 0 5px #22C55E88" : "none" }} />
           <span style={{ fontSize: 11, color: nodeStatus?.connected ? "#22C55E" : "#EF4444" }}>
