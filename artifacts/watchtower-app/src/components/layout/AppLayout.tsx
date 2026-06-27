@@ -26,7 +26,6 @@ function ThemeToggle() {
       }}
     >
       {isDark ? (
-        /* Sun icon */
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="5"/>
           <line x1="12" y1="1" x2="12" y2="3"/>
@@ -39,7 +38,6 @@ function ThemeToggle() {
           <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
         </svg>
       ) : (
-        /* Moon icon */
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
         </svg>
@@ -74,11 +72,7 @@ export function Topbar() {
   return (
     <div style={{ background: bg, borderBottom: `1px solid ${borderColor}`, padding: "0 24px", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, transition: "background 0.2s, border-color 0.2s" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <img
-          src={logoSvg}
-          alt="The Watchtower"
-          style={{ width: 36, height: 36, display: "block", color: isDark ? "#E2E8F0" : "#0D1520" }}
-        />
+        <div style={{ width: 20, height: 20, background: "#F7931A", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#000" }}>₿</div>
         <span style={{ color: "#F7931A", fontWeight: 700, fontSize: 13, letterSpacing: "0.12em", textTransform: "uppercase" }}>The Watchtower</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -108,7 +102,6 @@ export function Sidebar() {
   const activeBg = isDark ? "#142030" : "#D4DEF0";
   const inactiveColor = isDark ? "#4A6080" : "#7A8FA6";
   const versionColor = isDark ? "#2A4060" : "#9AAFC7";
-  const bottomBorderColor = isDark ? "#1E2D40" : "#BDCADA";
 
   const links = [
     { href: "/", label: "⬡ Dashboard" },
@@ -118,7 +111,7 @@ export function Sidebar() {
   ];
 
   return (
-    <div style={{ width: 180, background: bg, borderRight: `1px solid ${borderColor}`, display: "flex", flexDirection: "column", padding: "20px 0", flexShrink: 0, transition: "background 0.2s, border-color 0.2s" }}>
+    <div style={{ width: 180, background: bg, borderRight: `1px solid ${borderColor}`, display: "flex", flexDirection: "column", paddingTop: 20, flexShrink: 0, transition: "background 0.2s, border-color 0.2s" }}>
       {links.map((link) => {
         const isActive = location === link.href;
         return (
@@ -143,9 +136,25 @@ export function Sidebar() {
           </Link>
         );
       })}
-      <div style={{ marginTop: "auto", padding: "16px 20px", borderTop: `1px solid ${bottomBorderColor}` }}>
+
+      {/* Version label */}
+      <div style={{ marginTop: "auto", padding: "12px 20px 8px" }}>
         <div style={{ fontSize: 10, color: versionColor, letterSpacing: "0.08em" }}>WATCHTOWER</div>
         <div style={{ fontSize: 10, color: inactiveColor, marginTop: 2 }}>v0.2.0</div>
+      </div>
+
+      {/* Logo fills the sidebar width */}
+      <div style={{ borderTop: `1px solid ${borderColor}`, overflow: "hidden" }}>
+        <img
+          src={logoSvg}
+          alt="The Watchtower"
+          style={{
+            display: "block",
+            width: "100%",
+            height: "auto",
+            color: isDark ? "#CBD5E1" : "#1E2D45",
+          }}
+        />
       </div>
     </div>
   );
