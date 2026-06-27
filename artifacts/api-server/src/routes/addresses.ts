@@ -98,6 +98,18 @@ router.put("/:id", async (req, res) => {
       res.status(400).json({ error: "Invalid Bitcoin address" });
       return;
     }
+
+    // Reject if the new address is already watched by another entry
+    const dup = await db
+      .select()
+      .from(watchedAddresses)
+      .where(eq(watchedAddresses.address, address))
+      .limit(1);
+    if (dup.length > 0) {
+      res.status(409).json({ error: "Address already watched" });
+      return;
+    }
+
     // Unsubscribe old, subscribe new
     await unsubscribeAddress(old.scripthash);
     scripthash = addressToScripthash(address);

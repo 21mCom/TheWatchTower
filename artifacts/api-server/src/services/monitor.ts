@@ -168,8 +168,24 @@ async function subscribeAllAddresses(client: ElectrumClient) {
 }
 
 /**
+ * Classify an Electrum history entry height.
+ * Electrum uses height=0 for mempool and height<0 for unconfirmed low-fee txs.
+ * Both are "unconfirmed" in our model.
+ */
+function isUnconfirmed(height: number): boolean {
+  return height <= 0;
+}
+
+/** Current number of confirmations for a mined transaction, or 0 if not yet mined. */
+function confirmationCount(txHeight: number, chainTip: number | null): number {
+  if (isUnconfirmed(txHeight) || chainTip == null) return 0;
+  return Math.max(0, chainTip - txHeight + 1);
+}
+
+/**
  * Fetch the full history for a scripthash and process any new or updated transactions.
  * Safe to call multiple times — deduplicates via the alert_events table.
+ * Respects confirmationThreshold from settings before sending confirmed alerts.
  */
 async function processScripthashHistory(scripthash: string, client: ElectrumClient) {
   const [watched] = await db
@@ -177,6 +193,11 @@ async function processScripthashHistory(scripthash: string, client: ElectrumClie
     .from(watchedAddresses)
     .where(eq(watchedAddresses.scripthash, scripthash));
   if (!watched) return;
+
+  // Load threshold from settings (default: 1)
+  const [settings] = await db.select().from(appSettings).limit(1);
+  const threshold = settings?.confirmationThreshold ?? 1;
+  const chainTip = client.blockHeight;
 
   let history: { tx_hash: string; height: number }[];
   try {
@@ -188,7 +209,10 @@ async function processScripthashHistory(scripthash: string, client: ElectrumClie
 
   for (const entry of history) {
     const { tx_hash: txid, height } = entry;
-    const status = height === 0 ? "mempool" : "confirmed";
+    // height <= 0 means mempool/unconfirmed; positive height means mined
+    const unconfirmed = isUnconfirmed(height);
+    const confs = confirmationCount(height, chainTip);
+    const meetsThreshold = !unconfirmed && confs >= threshold;
 
     const existing = await db
       .select()
@@ -197,12 +221,14 @@ async function processScripthashHistory(scripthash: string, client: ElectrumClie
       .limit(1);
 
     if (existing.length === 0) {
-      // New transaction — decode it to determine direction and amount
-      await processNewTx(watched.id, watched.label, watched.address, scripthash, txid, height, status, client);
+      // New transaction — decode it to determine direction and amount.
+      // Store as "confirmed" only if it already meets the threshold; otherwise "mempool".
+      const initialStatus = meetsThreshold ? "confirmed" : "mempool";
+      await processNewTx(watched.id, watched.label, watched.address, scripthash, txid, height, initialStatus, client, threshold);
     } else {
       const evt = existing[0]!;
-      // Upgrade mempool → confirmed
-      if (evt.status === "mempool" && status === "confirmed") {
+      // Upgrade mempool → confirmed only when the threshold is reached
+      if (evt.status === "mempool" && meetsThreshold) {
         await db
           .update(alertEvents)
           .set({ status: "confirmed", blockHeight: height, confirmedAlertedAt: new Date() })
@@ -216,6 +242,7 @@ async function processScripthashHistory(scripthash: string, client: ElectrumClie
           evt.amountSats,
           "confirmed",
           height,
+          confs,
         );
       }
     }
@@ -240,6 +267,7 @@ async function processNewTx(
   height: number,
   status: "mempool" | "confirmed",
   client: ElectrumClient,
+  threshold: number,
 ) {
   let amountSats = 0;
   let direction: "incoming" | "outgoing" = "incoming";
@@ -278,6 +306,7 @@ async function processNewTx(
 
   const id = crypto.randomUUID();
   const now = new Date();
+  const confs = confirmationCount(height, client.blockHeight);
 
   await db.insert(alertEvents).values({
     id,
@@ -286,12 +315,13 @@ async function processNewTx(
     direction,
     amountSats,
     status,
-    blockHeight: height > 0 ? height : null,
+    blockHeight: !isUnconfirmed(height) ? height : null,
     mempoolAlertedAt: status === "mempool" ? now : null,
     confirmedAlertedAt: status === "confirmed" ? now : null,
   });
 
-  await sendTransactionAlert(label, address, txid, direction, amountSats, status, height);
+  // For mempool: always alert. For confirmed: alert with confirmation count.
+  await sendTransactionAlert(label, address, txid, direction, amountSats, status, height, confs, threshold);
 }
 
 async function sendTransactionAlert(
@@ -302,12 +332,17 @@ async function sendTransactionAlert(
   amountSats: number,
   status: "mempool" | "confirmed",
   height: number,
+  confs: number,
+  threshold: number = 1,
 ) {
   if (!xmpp.isConfigured() || !xmpp.isConnected()) return;
 
   const sign = direction === "incoming" ? "+" : "-";
   const btc = (amountSats / 1e8).toFixed(8);
-  const statusLabel = status === "mempool" ? "mempool" : `confirmed (block ${height})`;
+  const statusLabel =
+    status === "mempool"
+      ? "unconfirmed (mempool)"
+      : `confirmed (block ${height}, ${confs}/${threshold} confirmations)`;
 
   const msg =
     `[${direction.toUpperCase()}] ${label}\n` +
