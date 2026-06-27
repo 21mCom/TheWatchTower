@@ -111,8 +111,14 @@ async function loadSettingsAndConnect() {
     }
   });
 
-  client.on("reconnected", () => {
+  client.on("reconnected", async () => {
     nodeStatus = { connected: true, blockHeight: client.blockHeight, message: null, lastCheckedAt: new Date() };
+    logger.info("[monitor] Electrum reconnected — scanning for missed transactions");
+    try {
+      await catchUpAllAddresses(client);
+    } catch (err) {
+      logger.error({ err }, "[monitor] Reconnect catch-up failed");
+    }
   });
 
   client.on("blockHeight", (height: number) => {
@@ -144,6 +150,23 @@ async function loadSettingsAndConnect() {
     // client is kept; it will auto-reconnect via its internal timer
     electrum = client;
   }
+}
+
+/**
+ * After reconnecting, fetch and process history for every watched address.
+ * Uses processScripthashHistory which deduplicates against alert_events,
+ * so it is safe to call even if subscribeAllAddresses already ran.
+ */
+async function catchUpAllAddresses(client: ElectrumClient) {
+  const addresses = await db.select().from(watchedAddresses);
+  for (const addr of addresses) {
+    try {
+      await processScripthashHistory(addr.scripthash, client);
+    } catch (err) {
+      logger.warn({ err, address: addr.address }, "[monitor] reconnect catch-up failed for address");
+    }
+  }
+  logger.info({ count: addresses.length }, "[monitor] Reconnect catch-up complete");
 }
 
 /**
