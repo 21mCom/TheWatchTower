@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useGetNodeStatus } from "@workspace/api-client-react";
 import { useTheme } from "@/lib/theme";
+import logoSvg from "@/assets/logo.svg";
 
 function ThemeToggle() {
   const { theme, toggle } = useTheme();
@@ -72,8 +73,12 @@ export function Topbar() {
 
   return (
     <div style={{ background: bg, borderBottom: `1px solid ${borderColor}`, padding: "0 24px", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, transition: "background 0.2s, border-color 0.2s" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ width: 20, height: 20, background: "#F7931A", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#000" }}>₿</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <img
+          src={logoSvg}
+          alt="The Watchtower"
+          style={{ width: 36, height: 36, display: "block", color: isDark ? "#E2E8F0" : "#0D1520" }}
+        />
         <span style={{ color: "#F7931A", fontWeight: 700, fontSize: 13, letterSpacing: "0.12em", textTransform: "uppercase" }}>The Watchtower</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
