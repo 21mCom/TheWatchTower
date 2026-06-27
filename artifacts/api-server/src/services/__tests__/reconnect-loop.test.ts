@@ -301,24 +301,38 @@ test("subscriptions Set stays bounded and alert_events has no duplicates after 3
   );
 });
 
-test("concurrent processScripthashHistory calls produce exactly one alert_events row", async () => {
+test("concurrent processScripthashHistory calls produce exactly one alert_events row and one alert send", async () => {
   const client = getElectrumClient();
   assert.ok(client !== null, "ElectrumClient must be active for this test");
 
-  // Remove the row that the previous test inserted so we start from a clean state.
+  // Start from a clean slate — no existing row for this txid.
+  // This simulates the race window where both concurrent calls execute the
+  // SELECT and find nothing, then both attempt the INSERT concurrently.
   await db
     .delete(alertEvents)
     .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)));
 
+  // Reset the module-level counter so only the two calls below are counted.
+  // sendTransactionAlert increments _alertSendAttempts at its very first line,
+  // before any XMPP connectivity check, so the count is reliable in test environments
+  // where XMPP is not configured.
+  _resetAlertSendAttempts();
+
   // Fire two history-processing calls for the same scripthash at the same instant.
-  // Both will reach the SELECT-then-INSERT path concurrently and both will attempt to insert.
-  // The unique constraint on (address_id, txid) plus onConflictDoNothing() must guarantee
-  // that only one row lands in the table.
+  // Both will reach the SELECT → find-nothing → INSERT path concurrently.
+  // Deduplication is guaranteed by two cooperating mechanisms:
+  //   1. The unique index  alert_events_address_id_txid_idx  on (address_id, txid)
+  //      in lib/db/src/schema/activity.ts — the DB itself enforces uniqueness.
+  //   2. .onConflictDoNothing().returning()  in processNewTx — the INSERT that
+  //      loses the race returns an empty array, and processNewTx returns early
+  //      without calling sendTransactionAlert.
+  // Together they ensure exactly one row is persisted and exactly one alert fires.
   await Promise.all([
     processScripthashHistory(TEST_SCRIPTHASH, client!),
     processScripthashHistory(TEST_SCRIPTHASH, client!),
   ]);
 
+  // ── Assert: exactly one DB row ───────────────────────────────────────────────
   const [{ n }] = await db
     .select({ n: count() })
     .from(alertEvents)
@@ -328,7 +342,20 @@ test("concurrent processScripthashHistory calls produce exactly one alert_events
     n,
     1,
     `Expected exactly 1 alert_events row after two concurrent processScripthashHistory calls, ` +
-      `but found ${n}. The unique constraint or onConflictDoNothing() may not be active.`,
+      `but found ${n}. The unique index (alert_events_address_id_txid_idx) or ` +
+      `onConflictDoNothing() in processNewTx may not be active.`,
+  );
+
+  // ── Assert: exactly one alert send attempt ───────────────────────────────────
+  const alertSendCount = _getAlertSendAttempts();
+
+  assert.equal(
+    alertSendCount,
+    1,
+    `Expected exactly 1 alert send attempt after two concurrent processScripthashHistory calls ` +
+      `on a brand-new txid, but sendTransactionAlert was called ${alertSendCount} time(s). ` +
+      `The onConflictDoNothing().returning() guard in processNewTx may not be stopping the ` +
+      `losing INSERT from sending a duplicate alert.`,
   );
 });
 
