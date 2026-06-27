@@ -137,24 +137,33 @@ export function Sidebar() {
         );
       })}
 
-      {/* Version label */}
-      <div style={{ marginTop: "auto", padding: "12px 20px 8px" }}>
-        <div style={{ fontSize: 10, color: versionColor, letterSpacing: "0.08em" }}>WATCHTOWER</div>
-        <div style={{ fontSize: 10, color: inactiveColor, marginTop: 2 }}>v0.2.0</div>
+      {/* Logo above version label */}
+      <div style={{ marginTop: "auto", padding: "12px 14px 8px" }}>
+        <div style={{
+          border: `1px solid ${isDark ? "#2A4060" : "#BDCADA"}`,
+          borderRadius: 6,
+          overflow: "hidden",
+          background: isDark ? "#060A10" : "#F8FAFC",
+        }}>
+          <img
+            src={logoSvg}
+            alt="The Watchtower"
+            style={{
+              display: "block",
+              width: "100%",
+              height: "auto",
+              filter: isDark
+                ? "drop-shadow(1px 0 0 #3A5070) drop-shadow(-1px 0 0 #3A5070) drop-shadow(0 1px 0 #3A5070) drop-shadow(0 -1px 0 #3A5070)"
+                : "none",
+            }}
+          />
+        </div>
       </div>
 
-      {/* Logo fills the sidebar width */}
-      <div style={{ borderTop: `1px solid ${borderColor}`, overflow: "hidden" }}>
-        <img
-          src={logoSvg}
-          alt="The Watchtower"
-          style={{
-            display: "block",
-            width: "100%",
-            height: "auto",
-            color: isDark ? "#CBD5E1" : "#1E2D45",
-          }}
-        />
+      {/* Version label */}
+      <div style={{ padding: "6px 20px 16px", borderTop: `1px solid ${borderColor}` }}>
+        <div style={{ fontSize: 10, color: versionColor, letterSpacing: "0.08em" }}>WATCHTOWER</div>
+        <div style={{ fontSize: 10, color: inactiveColor, marginTop: 2 }}>v0.2.0</div>
       </div>
     </div>
   );
