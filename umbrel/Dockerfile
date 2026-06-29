@@ -34,9 +34,14 @@ FROM node:24-alpine AS runner
 WORKDIR /app
 RUN corepack enable pnpm
 
-# Copy built API server
-COPY --from=api-build /app/artifacts/api-server/dist ./server/dist
-COPY --from=api-build /app/artifacts/api-server/package.json ./server/
+# Copy built API server.
+# IMPORTANT: keep the dist at the SAME path it was built at
+# (/app/artifacts/api-server/dist). esbuild-plugin-pino bakes ABSOLUTE paths to
+# its worker files (thread-stream-worker.mjs, pino-*.mjs) based on the build-time
+# output dir, so the bundle must run from that exact location or it fails at
+# startup with "Cannot find module .../thread-stream-worker.mjs".
+COPY --from=api-build /app/artifacts/api-server/dist ./artifacts/api-server/dist
+COPY --from=api-build /app/artifacts/api-server/package.json ./artifacts/api-server/
 
 # Copy built frontend static files
 COPY --from=frontend-build /app/artifacts/watchtower-app/dist/public ./public
