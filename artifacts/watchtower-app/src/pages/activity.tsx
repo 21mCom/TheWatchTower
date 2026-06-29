@@ -4,7 +4,8 @@ import { formatBtc, truncateAddress, formatTimeAgo } from "@/lib/format";
 
 export default function Activity() {
   const [filter, setFilter] = useState<"ALL" | "IN" | "OUT" | "MEMPOOL">("ALL");
-  const { data: activityPage, isLoading } = useListActivity(undefined, { query: { queryKey: getListActivityQueryKey(), refetchInterval: 30000 }});
+  const activityParams = undefined;
+  const { data: activityPage, isLoading } = useListActivity(activityParams, { query: { queryKey: getListActivityQueryKey(activityParams), refetchInterval: 30000 } });
 
   let events = activityPage?.events || [];
   

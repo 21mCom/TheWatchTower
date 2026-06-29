@@ -97,6 +97,14 @@ async function main() {
       CREATE UNIQUE INDEX IF NOT EXISTS alert_events_address_id_txid_idx
         ON alert_events (address_id, txid);
 
+      -- Rate-limiter backing store.  Keeps per-IP hit counters across process
+      -- restarts so Umbrel's on-failure restart policy can't grant a free window.
+      CREATE TABLE IF NOT EXISTS rate_limit_windows (
+        key        TEXT PRIMARY KEY,
+        hits       INTEGER NOT NULL DEFAULT 1,
+        reset_time TIMESTAMPTZ NOT NULL
+      );
+
       DO $$
       BEGIN
         IF EXISTS (

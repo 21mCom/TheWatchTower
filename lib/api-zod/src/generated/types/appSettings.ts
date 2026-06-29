@@ -18,4 +18,5 @@ export interface AppSettings {
   xmppTls: boolean;
   recipientJid: string;
   xmppConfigured: boolean;
+  alertTemplate: string;
 }

@@ -110,7 +110,7 @@ async function loadSettingsAndConnect() {
     await subscribeAllAddresses(client);
 
     if (xmpp.isConfigured() && xmpp.isConnected()) {
-      xmpp.sendAlert("Watchtower: Node connection restored.").catch(() => {});
+      xmpp.sendConnectionAlert("Watchtower: Node connection restored.").catch(() => {});
     }
   });
 
@@ -123,7 +123,7 @@ async function loadSettingsAndConnect() {
       lastCheckedAt: new Date(),
     };
     if (xmpp.isConfigured() && xmpp.isConnected()) {
-      xmpp.sendAlert("WARNING Watchtower: Lost connection to Bitcoin node.").catch(() => {});
+      xmpp.sendConnectionAlert("WARNING Watchtower: Lost connection to Bitcoin node.").catch(() => {});
     }
   });
 
@@ -368,6 +368,42 @@ async function processNewTx(
   await sendTransactionAlert(label, address, txid, direction, amountSats, status, height, confs, threshold);
 }
 
+const DEFAULT_ALERT_TEMPLATE =
+  "[{direction}] {label}\nAmount: {amount_btc} ({amount_sats} sats)\nAddress: {address}\nTxid: {txid}\nStatus: {status}";
+
+function renderAlertTemplate(
+  template: string,
+  vars: {
+    label: string;
+    address: string;
+    txid: string;
+    direction: "incoming" | "outgoing";
+    amountSats: number;
+    status: "mempool" | "confirmed";
+    height: number;
+    confs: number;
+    threshold: number;
+  },
+): string {
+  const sign = vars.direction === "incoming" ? "+" : "-";
+  const btc = (vars.amountSats / 1e8).toFixed(8);
+  const statusLabel =
+    vars.status === "mempool"
+      ? "unconfirmed (mempool)"
+      : `confirmed (block ${vars.height}, ${vars.confs}/${vars.threshold} confirmations)`;
+
+  return template
+    .replace(/{label}/g, vars.label)
+    .replace(/{address}/g, vars.address)
+    .replace(/{txid}/g, vars.txid)
+    .replace(/{direction}/g, vars.direction.toUpperCase())
+    .replace(/{amount_btc}/g, `${sign}${btc} BTC`)
+    .replace(/{amount_sats}/g, vars.amountSats.toLocaleString())
+    .replace(/{status}/g, statusLabel)
+    .replace(/{block}/g, vars.height > 0 ? String(vars.height) : "mempool")
+    .replace(/{confirmations}/g, `${vars.confs}/${vars.threshold}`);
+}
+
 async function sendTransactionAlert(
   label: string,
   address: string,
@@ -382,19 +418,10 @@ async function sendTransactionAlert(
   _alertSendAttempts++;
   if (!xmpp.isConfigured() || !xmpp.isConnected()) return;
 
-  const sign = direction === "incoming" ? "+" : "-";
-  const btc = (amountSats / 1e8).toFixed(8);
-  const statusLabel =
-    status === "mempool"
-      ? "unconfirmed (mempool)"
-      : `confirmed (block ${height}, ${confs}/${threshold} confirmations)`;
+  const [settings] = await db.select({ alertTemplate: appSettings.alertTemplate }).from(appSettings).limit(1);
+  const template = settings?.alertTemplate || DEFAULT_ALERT_TEMPLATE;
 
-  const msg =
-    `[${direction.toUpperCase()}] ${label}\n` +
-    `Amount: ${sign}${btc} BTC (${amountSats.toLocaleString()} sats)\n` +
-    `Address: ${address}\n` +
-    `Txid: ${txid}\n` +
-    `Status: ${statusLabel}`;
+  const msg = renderAlertTemplate(template, { label, address, txid, direction, amountSats, status, height, confs, threshold });
 
   try {
     await xmpp.sendAlert(msg);

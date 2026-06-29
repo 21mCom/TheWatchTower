@@ -60,12 +60,48 @@ const RAW_TX_HEX =
   OUTPUT_SCRIPT_HEX +
   "00000000";
 
+// ── Second address — cross-address alert test ─────────────────────────────────
+// Uses witness program byte 0x03 so its scripthash doesn't collide with the
+// primary address (0x02) or the monitor-reconnect test (0x01).
+const WITNESS_PROGRAM_HEX_2 = "0000000000000000000000000000000000000003";
+const OUTPUT_SCRIPT_HEX_2 = "0014" + WITNESS_PROGRAM_HEX_2;
+const TEST_SCRIPTHASH_2 = scriptToScripthash(OUTPUT_SCRIPT_HEX_2);
+
+const TEST_ADDR_ID_2 = `loop-test-addr2-${crypto.randomUUID()}`;
+const TEST_ADDRESS_LABEL_2 = "Test Loop Address 2";
+
+// Unique txid for the second address — must never collide with TEST_TXID or TEST_TXID_2
+const TEST_TXID_ADDR2 = "ee".repeat(32);
+
+// Minimal raw transaction paying 30 000 sats to OUTPUT_SCRIPT_HEX_2
+const RAW_TX_HEX_2 =
+  "01000000" +
+  "01" +
+  "0".repeat(64) +
+  "ffffffff" +
+  "01" + "00" +
+  "ffffffff" +
+  "01" +
+  "30750000000000" + "00" +
+  "16" +
+  OUTPUT_SCRIPT_HEX_2 +
+  "00000000";
+
 // ── Mock Electrum TCP server ──────────────────────────────────────────────────
 
 // History is pre-seeded so the subscribe response is immediately non-null.
 const mockHistory: Array<{ tx_hash: string; height: number }> = [
   { tx_hash: TEST_TXID, height: 800_000 },
 ];
+
+// Per-scripthash history overrides — populated by individual tests that need
+// a different history for a specific scripthash. Falls back to mockHistory when
+// the scripthash is not found in the map, preserving backward compat.
+const mockHistoryByScripthash = new Map<string, Array<{ tx_hash: string; height: number }>>();
+
+// Per-txid raw transaction overrides — populated by tests that need a specific
+// raw tx for a given txid. Falls back to RAW_TX_HEX for unrecognised txids.
+const mockRawTxByTxid = new Map<string, string>();
 
 let mockServer!: net.Server;
 let serverPort!: number;
@@ -79,7 +115,7 @@ function handleRequest(
   socket: net.Socket,
   msg: { id: number; method: string; params: unknown[] },
 ): void {
-  const { id, method } = msg;
+  const { id, method, params } = msg;
   switch (method) {
     case "server.ping":
       respond(socket, id, null);
@@ -88,15 +124,23 @@ function handleRequest(
       respond(socket, id, { height: 800_001 });
       break;
     case "blockchain.scripthash.subscribe":
-      // Always return non-null (history exists from the start)
-      respond(socket, id, "status-hash-loop-v1");
+      // Return non-null only for our test scripthash; other addresses have no history.
+      respond(socket, id, params[0] === TEST_SCRIPTHASH ? "status-hash-loop-v1" : null);
       break;
-    case "blockchain.scripthash.get_history":
-      respond(socket, id, mockHistory);
+    case "blockchain.scripthash.get_history": {
+      const scripthash = (params as string[])[0];
+      // Per-scripthash override wins; unknown scripthashes get [] to prevent
+      // spurious alerts from unrelated watched addresses in the DB.
+      const history = mockHistoryByScripthash.get(scripthash) ?? (scripthash === TEST_SCRIPTHASH ? mockHistory : []);
+      respond(socket, id, history);
       break;
-    case "blockchain.transaction.get":
-      respond(socket, id, RAW_TX_HEX);
+    }
+    case "blockchain.transaction.get": {
+      const txid = (params as string[])[0];
+      const rawTx = mockRawTxByTxid.get(txid) ?? RAW_TX_HEX;
+      respond(socket, id, rawTx);
       break;
+    }
     default:
       respond(socket, id, null);
   }
@@ -449,6 +493,231 @@ test("concurrent processScripthashHistory calls on a mempool tx produce exactly 
   );
 });
 
+test("notification handler fires twice with same status — exactly one alert row and one send attempt", async () => {
+  const client = getElectrumClient();
+  assert.ok(client !== null, "ElectrumClient must be active for this test");
+
+  // Remove any alert row from prior tests so this test starts clean.
+  await db
+    .delete(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)));
+
+  // Reset the send-attempt counter so only the two notification-triggered calls below
+  // are counted.  sendTransactionAlert increments _alertSendAttempts at its very first
+  // line, before any XMPP check, so the count is reliable in test environments where
+  // XMPP is not configured.
+  _resetAlertSendAttempts();
+
+  // Push two identical blockchain.scripthash.subscribe push notifications from the
+  // server side in rapid succession.  This simulates the real-world scenario where a
+  // quirky Electrum server (or a reconnect notification that overlaps a live push)
+  // delivers the same (scripthash, status) pair twice.
+  //
+  // Each notification flows:
+  //   TCP → ElectrumClient.handleMessage → notificationHandler → processScripthashHistory
+  //
+  // Deduplication is guaranteed by two cooperating mechanisms inside processNewTx:
+  //   1. The unique index  alert_events_address_id_txid_idx  on (address_id, txid).
+  //   2. .onConflictDoNothing().returning() — the INSERT that loses the race returns [],
+  //      so processNewTx returns early without calling sendTransactionAlert.
+  const notification =
+    JSON.stringify({
+      method: "blockchain.scripthash.subscribe",
+      params: [TEST_SCRIPTHASH, "status-hash-loop-v1"],
+    }) + "\n";
+
+  // Write both notifications through a single server-side socket so they arrive
+  // back-to-back (same event-loop tick on the client), maximising the race window.
+  let pushed = false;
+  for (const socket of activeClientSockets) {
+    socket.write(notification);
+    socket.write(notification);
+    pushed = true;
+    break;
+  }
+  assert.ok(pushed, "Expected at least one active server socket to push notifications through");
+
+  // Allow both concurrent processScripthashHistory calls to complete.
+  await sleep(500);
+
+  // ── Assert: exactly one DB row ───────────────────────────────────────────────
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)));
+
+  assert.equal(
+    n,
+    1,
+    `Expected exactly 1 alert_events row after the notification handler fired twice with ` +
+      `the same (scripthash, status), but found ${n}. ` +
+      `The unique index or onConflictDoNothing() guard in processNewTx may not be active.`,
+  );
+
+  // ── Assert: exactly one send attempt ─────────────────────────────────────────
+  const alertSendCount = _getAlertSendAttempts();
+  assert.equal(
+    alertSendCount,
+    1,
+    `Expected exactly 1 alert send attempt when the notification handler fires twice with ` +
+      `the same status, but sendTransactionAlert was called ${alertSendCount} time(s). ` +
+      `The onConflictDoNothing().returning() guard in processNewTx may not be stopping ` +
+      `the losing concurrent INSERT from sending a duplicate alert.`,
+  );
+});
+
+test("processNewTx inserts alert row with amountSats=0 and direction='incoming' when getTransaction fails", async () => {
+  const client = getElectrumClient();
+  assert.ok(client !== null, "ElectrumClient must be active for this test");
+
+  const DECODE_FAIL_TXID = "ee".repeat(32);
+
+  // Delete any leftover row from a previous interrupted run
+  await db
+    .delete(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, DECODE_FAIL_TXID)));
+
+  // Temporarily replace the shared mock history with only this one mempool tx so
+  // getTransaction is called exactly once during processScripthashHistory.
+  const savedHistory = mockHistory.splice(0, mockHistory.length);
+  mockHistory.push({ tx_hash: DECODE_FAIL_TXID, height: 0 }); // height=0 → mempool
+
+  // Patch getTransaction to throw on the first invocation only.
+  const originalGetTx = (client as Record<string, unknown>).getTransaction as (txid: string) => Promise<string>;
+  let getTransactionCallCount = 0;
+  (client as Record<string, unknown>).getTransaction = async (txid: string): Promise<string> => {
+    if (getTransactionCallCount++ === 0) {
+      throw new Error("mock getTransaction failure for decode-race test");
+    }
+    return originalGetTx.call(client, txid);
+  };
+
+  _resetAlertSendAttempts();
+
+  try {
+    await processScripthashHistory(TEST_SCRIPTHASH, client!);
+  } finally {
+    // Restore mock history and the original getTransaction implementation
+    mockHistory.splice(0, mockHistory.length, ...savedHistory);
+    (client as Record<string, unknown>).getTransaction = originalGetTx;
+  }
+
+  // ── Assert: exactly one alert_events row was inserted ─────────────────────
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, DECODE_FAIL_TXID)));
+
+  assert.equal(
+    n,
+    1,
+    `Expected exactly 1 alert_events row even when getTransaction throws, but found ${n}. ` +
+      `processNewTx may be silently discarding the insert after a decode failure.`,
+  );
+
+  // ── Assert: exactly one alert send attempt ────────────────────────────────
+  const sendCount = _getAlertSendAttempts();
+  assert.equal(
+    sendCount,
+    1,
+    `Expected _getAlertSendAttempts() === 1 even when getTransaction throws, but got ${sendCount}. ` +
+      `The mempool alert is being silently skipped when the decode step fails.`,
+  );
+
+  // ── Assert: fallback values are persisted ─────────────────────────────────
+  const [row] = await db
+    .select({ amountSats: alertEvents.amountSats, direction: alertEvents.direction })
+    .from(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, DECODE_FAIL_TXID)))
+    .limit(1);
+
+  assert.equal(
+    row?.amountSats,
+    0,
+    `Expected amountSats=0 (fallback) when getTransaction fails, but got ${row?.amountSats}.`,
+  );
+  assert.equal(
+    row?.direction,
+    "incoming",
+    `Expected direction='incoming' (fallback) when getTransaction fails, but got ${row?.direction}.`,
+  );
+
+  // Clean up the test row
+  await db
+    .delete(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, DECODE_FAIL_TXID)));
+});
+
+test("reconnect catch-up fires exactly one confirmed alert per txid when two txids are in the history", async () => {
+  const client = getElectrumClient();
+  assert.ok(client !== null, "ElectrumClient must be active for this test");
+
+  // Remove all alert rows for this address so the catch-up sees both txids as new.
+  await db
+    .delete(alertEvents)
+    .where(eq(alertEvents.addressId, TEST_ADDR_ID));
+
+  // Extend the mock history with a second confirmed txid — both in the same block.
+  // The mock server will return this two-entry history for every get_history call,
+  // including the one triggered by catchUpAllAddresses after the reconnect.
+  mockHistory.push({ tx_hash: TEST_TXID_2, height: 800_000 });
+
+  // Reset the send-attempt counter so only catch-up calls are counted.
+  _resetAlertSendAttempts();
+
+  try {
+    // Simulate a node outage — destroys all active sockets.
+    // The ElectrumClient will auto-reconnect (50 ms delay) and emit "reconnected",
+    // which triggers catchUpAllAddresses → processScripthashHistory for each watched address.
+    simulateOutage();
+
+    // Wait for the client to reconnect and the catch-up to settle.
+    const reconnected = await waitUntilConnected(4_000);
+    assert.ok(reconnected, "Monitor should reconnect after the simulated outage");
+
+    // Give catchUpAllAddresses enough time to finish processing both history entries.
+    await sleep(500);
+  } finally {
+    // Always restore the original single-entry history so later tests or reconnects
+    // see only TEST_TXID.
+    mockHistory.pop();
+  }
+
+  // ── Assert: exactly two rows, one per txid ───────────────────────────────
+  const [{ n: totalRows }] = await db
+    .select({ n: count() })
+    .from(alertEvents)
+    .where(eq(alertEvents.addressId, TEST_ADDR_ID));
+
+  assert.equal(
+    totalRows,
+    2,
+    `Expected exactly 2 alert_events rows after reconnect catch-up with a two-entry history, ` +
+      `but found ${totalRows}. catchUpAllAddresses may be skipping or merging entries.`,
+  );
+
+  for (const txid of [TEST_TXID, TEST_TXID_2]) {
+    const [{ n }] = await db
+      .select({ n: count() })
+      .from(alertEvents)
+      .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, txid)));
+    assert.equal(
+      n,
+      1,
+      `Expected exactly 1 alert_events row for txid ${txid.slice(0, 8)}… after reconnect catch-up, but found ${n}.`,
+    );
+  }
+
+  // ── Assert: exactly two send attempts, one per txid ─────────────────────
+  const sendCount = _getAlertSendAttempts();
+  assert.equal(
+    sendCount,
+    2,
+    `Expected _getAlertSendAttempts() === 2 after reconnect catch-up with two new confirmed txids, ` +
+      `but got ${sendCount}. One or more per-txid alert sends were skipped or doubled in catchUpAllAddresses.`,
+  );
+});
+
 test("two distinct txids in the same history response each produce exactly one alert row and one send attempt", async () => {
   const client = getElectrumClient();
   assert.ok(client !== null, "ElectrumClient must be active for this test");
@@ -510,5 +779,109 @@ test("two distinct txids in the same history response each produce exactly one a
     2,
     `Expected _getAlertSendAttempts() === 2 after processing two new confirmed txids, ` +
       `but got ${sendCount}. One or more per-entry alert sends were skipped or doubled.`,
+  );
+});
+
+test("two different watched addresses each receiving a transaction in the same block each produce exactly one alert row and one send attempt", async () => {
+  const client = getElectrumClient();
+  assert.ok(client !== null, "ElectrumClient must be active for this test");
+
+  // ── Seed the second watched address ──────────────────────────────────────
+  await db
+    .insert(watchedAddresses)
+    .values({
+      id: TEST_ADDR_ID_2,
+      label: TEST_ADDRESS_LABEL_2,
+      address: `test-placeholder-${TEST_ADDR_ID_2}`,
+      scripthash: TEST_SCRIPTHASH_2,
+    })
+    .onConflictDoNothing();
+
+  // Clean up any leftover alert rows for both addresses from previous tests.
+  await db.delete(alertEvents).where(eq(alertEvents.addressId, TEST_ADDR_ID));
+  await db.delete(alertEvents).where(eq(alertEvents.addressId, TEST_ADDR_ID_2));
+
+  // ── Configure per-scripthash histories ───────────────────────────────────
+  // Each address has exactly one confirmed transaction in the same block (800_000).
+  // The mock server will return the correct history for each scripthash query.
+  mockHistoryByScripthash.set(TEST_SCRIPTHASH, [
+    { tx_hash: TEST_TXID, height: 800_000 },
+  ]);
+  mockHistoryByScripthash.set(TEST_SCRIPTHASH_2, [
+    { tx_hash: TEST_TXID_ADDR2, height: 800_000 },
+  ]);
+
+  // ── Configure per-txid raw transactions ──────────────────────────────────
+  // Each txid maps to a raw tx whose output pays to the matching scripthash so
+  // decodeRawTx classifies the transaction as "incoming" for the correct address.
+  mockRawTxByTxid.set(TEST_TXID, RAW_TX_HEX);
+  mockRawTxByTxid.set(TEST_TXID_ADDR2, RAW_TX_HEX_2);
+
+  // Reset the alert-send counter so only the two calls below are counted.
+  _resetAlertSendAttempts();
+
+  // Captured inside the try block before cleanup, then asserted below.
+  let rowCountAddr1 = 0;
+  let rowCountAddr2 = 0;
+  let sendCount = 0;
+
+  try {
+    // Process history for each address independently — one call per scripthash,
+    // mirroring exactly what catchUpAllAddresses does when it iterates over the
+    // address list after a reconnect.
+    await processScripthashHistory(TEST_SCRIPTHASH, client!);
+    await processScripthashHistory(TEST_SCRIPTHASH_2, client!);
+
+    // Capture results before the finally block removes the rows.
+    const [r1] = await db
+      .select({ n: count() })
+      .from(alertEvents)
+      .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)));
+    rowCountAddr1 = r1?.n ?? 0;
+
+    const [r2] = await db
+      .select({ n: count() })
+      .from(alertEvents)
+      .where(and(eq(alertEvents.addressId, TEST_ADDR_ID_2), eq(alertEvents.txid, TEST_TXID_ADDR2)));
+    rowCountAddr2 = r2?.n ?? 0;
+
+    sendCount = _getAlertSendAttempts();
+  } finally {
+    // Always restore the mock-server maps so subsequent tests (or reconnect-triggered
+    // catch-up calls) are not affected by this test's overrides.
+    mockHistoryByScripthash.delete(TEST_SCRIPTHASH);
+    mockHistoryByScripthash.delete(TEST_SCRIPTHASH_2);
+    mockRawTxByTxid.delete(TEST_TXID);
+    mockRawTxByTxid.delete(TEST_TXID_ADDR2);
+
+    // Clean up the second address's DB rows regardless of test outcome.
+    await db.delete(alertEvents).where(eq(alertEvents.addressId, TEST_ADDR_ID_2));
+    await db.delete(watchedAddresses).where(eq(watchedAddresses.id, TEST_ADDR_ID_2));
+  }
+
+  // ── Assert: exactly one alert_events row for each address ─────────────────
+  assert.equal(
+    rowCountAddr1,
+    1,
+    `Expected exactly 1 alert_events row for address 1 (txid ${TEST_TXID.slice(0, 8)}…) ` +
+      `but found ${rowCountAddr1}. The cross-address deduplication loop may be skipping or ` +
+      `merging entries across different scripthash contexts.`,
+  );
+
+  assert.equal(
+    rowCountAddr2,
+    1,
+    `Expected exactly 1 alert_events row for address 2 (txid ${TEST_TXID_ADDR2.slice(0, 8)}…) ` +
+      `but found ${rowCountAddr2}. The cross-address deduplication loop may be skipping or ` +
+      `merging entries across different scripthash contexts.`,
+  );
+
+  // ── Assert: exactly two send attempts, one per address ───────────────────
+  assert.equal(
+    sendCount,
+    2,
+    `Expected _getAlertSendAttempts() === 2 after processing one confirmed tx per address ` +
+      `(two addresses total), but got ${sendCount}. An alert for one of the addresses ` +
+      `may have been silently skipped or incorrectly duplicated.`,
   );
 });

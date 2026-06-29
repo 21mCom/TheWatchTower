@@ -1,16 +1,62 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGetSettings, useUpdateSettings, useSendTestAlert, useGetNodeStatus, getGetSettingsQueryKey, getGetNodeStatusQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
+const DEFAULT_TEMPLATE =
+  "[{direction}] {label}\nAmount: {amount_btc} ({amount_sats} sats)\nAddress: {address}\nTxid: {txid}\nStatus: {status}";
+
+const TOKENS: { token: string; label: string; example: string }[] = [
+  { token: "{label}",         label: "Label",          example: "Cold Storage" },
+  { token: "{address}",       label: "Address",        example: "bc1qxyz…" },
+  { token: "{txid}",          label: "Txid",           example: "a1b2c3…" },
+  { token: "{direction}",     label: "Direction",      example: "INCOMING" },
+  { token: "{amount_btc}",    label: "Amount (BTC)",   example: "+0.00500000 BTC" },
+  { token: "{amount_sats}",   label: "Amount (sats)",  example: "500,000 sats" },
+  { token: "{status}",        label: "Status",         example: "confirmed (block 850000, 1/1 confirmations)" },
+  { token: "{block}",         label: "Block",          example: "850000" },
+  { token: "{confirmations}", label: "Confirmations",  example: "1/1" },
+];
+
+const SAMPLE: Record<string, string> = {
+  "{label}":         "Cold Storage",
+  "{address}":       "bc1qxyz…",
+  "{txid}":          "a1b2c3d4…",
+  "{direction}":     "INCOMING",
+  "{amount_btc}":    "+0.00500000 BTC",
+  "{amount_sats}":   "500,000",
+  "{status}":        "confirmed (block 850000, 1/1 confirmations)",
+  "{block}":         "850000",
+  "{confirmations}": "1/1",
+};
+
+function renderPreview(template: string): string {
+  return TOKENS.reduce((t, tok) => t.replaceAll(tok.token, SAMPLE[tok.token] ?? tok.token), template);
+}
+
+const inputStyle: React.CSSProperties = {
+  background: "#080D14",
+  border: "1px solid #1E2D40",
+  borderRadius: 4,
+  color: "#CBD5E1",
+  fontFamily: "inherit",
+  fontSize: 12,
+  padding: "7px 10px",
+  width: "100%",
+  outline: "none",
+  boxSizing: "border-box",
+};
+
 export default function Settings() {
   const { data: settings, isLoading } = useGetSettings();
   const { data: nodeStatus } = useGetNodeStatus({ query: { queryKey: getGetNodeStatusQueryKey(), refetchInterval: 10000 }});
-  
+
   const updateSettings = useUpdateSettings();
   const sendTestAlert = useSendTestAlert();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const templateRef = useRef<HTMLTextAreaElement>(null);
 
   const [formData, setFormData] = useState({
     electrumHost: "",
@@ -23,7 +69,8 @@ export default function Settings() {
     xmppJid: "",
     xmppPassword: "",
     xmppTls: true,
-    recipientJid: ""
+    recipientJid: "",
+    alertTemplate: DEFAULT_TEMPLATE,
   });
 
   useEffect(() => {
@@ -38,28 +85,29 @@ export default function Settings() {
         xmppServer: settings.xmppServer,
         xmppPort: settings.xmppPort,
         xmppJid: settings.xmppJid,
-        xmppPassword: "", // Don't populate password
+        xmppPassword: "",
         xmppTls: settings.xmppTls,
-        recipientJid: settings.recipientJid
+        recipientJid: settings.recipientJid,
+        alertTemplate: settings.alertTemplate ?? DEFAULT_TEMPLATE,
       }));
     }
   }, [settings]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const target = e.target as HTMLInputElement;
+    const { name, value, type } = target;
+    const checked = type === "checkbox" ? target.checked : undefined;
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : (type === 'number' ? Number(value) : value)
+      [name]: type === "checkbox" ? checked : (type === "number" ? Number(value) : value),
     }));
   };
 
   const handleSave = async () => {
     try {
-      const payload = { ...formData };
-      if (!payload.xmppPassword) {
-        delete (payload as any).xmppPassword;
-      }
-      await updateSettings.mutateAsync({ data: payload });
+      const payload = { ...formData } as Record<string, unknown>;
+      if (!payload.xmppPassword) delete payload.xmppPassword;
+      await updateSettings.mutateAsync({ data: payload as Parameters<typeof updateSettings.mutateAsync>[0]["data"] });
       queryClient.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
       toast({ title: "Settings saved successfully" });
     } catch (err: any) {
@@ -80,6 +128,22 @@ export default function Settings() {
     }
   };
 
+  const insertToken = (token: string) => {
+    const el = templateRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const before = el.value.slice(0, start);
+    const after = el.value.slice(end);
+    const next = before + token + after;
+    setFormData(prev => ({ ...prev, alertTemplate: next }));
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
   const showSelfSignedWarning = formData.electrumTls && formData.electrumAllowSelfSigned;
 
   if (isLoading) return <div style={{ padding: 24, color: "#4A6080" }}>Loading settings...</div>;
@@ -94,15 +158,15 @@ export default function Settings() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
             <div style={{ fontSize: 10, color: "#2A4060", letterSpacing: "0.08em", marginBottom: 4 }}>ELECTRUM HOST</div>
-            <input name="electrumHost" value={formData.electrumHost} onChange={handleChange} style={{ background: "#080D14", border: "1px solid #1E2D40", borderRadius: 4, color: "#CBD5E1", fontFamily: "inherit", fontSize: 12, padding: "7px 10px", width: "100%", outline: "none", boxSizing: "border-box" }} />
+            <input name="electrumHost" value={formData.electrumHost} onChange={handleChange} style={inputStyle} />
           </div>
           <div>
             <div style={{ fontSize: 10, color: "#2A4060", letterSpacing: "0.08em", marginBottom: 4 }}>ELECTRUM PORT</div>
-            <input type="number" name="electrumPort" value={formData.electrumPort} onChange={handleChange} style={{ background: "#080D14", border: "1px solid #1E2D40", borderRadius: 4, color: "#CBD5E1", fontFamily: "inherit", fontSize: 12, padding: "7px 10px", width: "100%", outline: "none", boxSizing: "border-box" }} />
+            <input type="number" name="electrumPort" value={formData.electrumPort} onChange={handleChange} style={inputStyle} />
           </div>
           <div>
             <div style={{ fontSize: 10, color: "#2A4060", letterSpacing: "0.08em", marginBottom: 4 }}>CONFIRMATION THRESHOLD</div>
-            <input type="number" name="confirmationThreshold" value={formData.confirmationThreshold} onChange={handleChange} style={{ background: "#080D14", border: "1px solid #1E2D40", borderRadius: 4, color: "#CBD5E1", fontFamily: "inherit", fontSize: 12, padding: "7px 10px", width: "100%", outline: "none", boxSizing: "border-box" }} />
+            <input type="number" name="confirmationThreshold" value={formData.confirmationThreshold} onChange={handleChange} style={inputStyle} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 18 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
@@ -118,7 +182,6 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Amber warning when self-signed mode is active */}
         {showSelfSignedWarning && (
           <div style={{ marginTop: 12, background: "#2A1A00", border: "1px solid #F7931A55", borderRadius: 4, padding: "8px 12px", display: "flex", gap: 8, alignItems: "flex-start" }}>
             <span style={{ color: "#F7931A", fontSize: 13, flexShrink: 0, marginTop: 1 }}>⚠</span>
@@ -143,23 +206,23 @@ export default function Settings() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
             <div style={{ fontSize: 10, color: "#2A4060", letterSpacing: "0.08em", marginBottom: 4 }}>XMPP SERVER</div>
-            <input name="xmppServer" value={formData.xmppServer} onChange={handleChange} style={{ background: "#080D14", border: "1px solid #1E2D40", borderRadius: 4, color: "#CBD5E1", fontFamily: "inherit", fontSize: 12, padding: "7px 10px", width: "100%", outline: "none", boxSizing: "border-box" }} />
+            <input name="xmppServer" value={formData.xmppServer} onChange={handleChange} style={inputStyle} />
           </div>
           <div>
             <div style={{ fontSize: 10, color: "#2A4060", letterSpacing: "0.08em", marginBottom: 4 }}>XMPP PORT</div>
-            <input type="number" name="xmppPort" value={formData.xmppPort} onChange={handleChange} style={{ background: "#080D14", border: "1px solid #1E2D40", borderRadius: 4, color: "#CBD5E1", fontFamily: "inherit", fontSize: 12, padding: "7px 10px", width: "100%", outline: "none", boxSizing: "border-box" }} />
+            <input type="number" name="xmppPort" value={formData.xmppPort} onChange={handleChange} style={inputStyle} />
           </div>
           <div>
             <div style={{ fontSize: 10, color: "#2A4060", letterSpacing: "0.08em", marginBottom: 4 }}>XMPP JID (SENDER)</div>
-            <input name="xmppJid" value={formData.xmppJid} onChange={handleChange} placeholder="watchtower@example.com" style={{ background: "#080D14", border: "1px solid #1E2D40", borderRadius: 4, color: "#CBD5E1", fontFamily: "inherit", fontSize: 12, padding: "7px 10px", width: "100%", outline: "none", boxSizing: "border-box" }} />
+            <input name="xmppJid" value={formData.xmppJid} onChange={handleChange} placeholder="watchtower@example.com" style={inputStyle} />
           </div>
           <div>
             <div style={{ fontSize: 10, color: "#2A4060", letterSpacing: "0.08em", marginBottom: 4 }}>PASSWORD</div>
-            <input type="password" name="xmppPassword" value={formData.xmppPassword} onChange={handleChange} placeholder="••••••••••••" style={{ background: "#080D14", border: "1px solid #1E2D40", borderRadius: 4, color: "#CBD5E1", fontFamily: "inherit", fontSize: 12, padding: "7px 10px", width: "100%", outline: "none", boxSizing: "border-box" }} />
+            <input type="password" name="xmppPassword" value={formData.xmppPassword} onChange={handleChange} placeholder="••••••••••••" style={inputStyle} />
           </div>
           <div>
             <div style={{ fontSize: 10, color: "#2A4060", letterSpacing: "0.08em", marginBottom: 4 }}>RECIPIENT JID</div>
-            <input name="recipientJid" value={formData.recipientJid} onChange={handleChange} placeholder="you@example.com" style={{ background: "#080D14", border: "1px solid #1E2D40", borderRadius: 4, color: "#CBD5E1", fontFamily: "inherit", fontSize: 12, padding: "7px 10px", width: "100%", outline: "none", boxSizing: "border-box" }} />
+            <input name="recipientJid" value={formData.recipientJid} onChange={handleChange} placeholder="you@example.com" style={inputStyle} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 18 }}>
             <input type="checkbox" name="xmppTls" checked={formData.xmppTls} onChange={handleChange} />
@@ -167,14 +230,104 @@ export default function Settings() {
           </div>
         </div>
         <div style={{ marginTop: 20, display: "flex", gap: 8 }}>
-          <button 
+          <button
             onClick={handleTestAlert}
             disabled={sendTestAlert.isPending}
             style={{ background: "#F7931A22", border: "1px solid #F7931A", color: "#F7931A", fontFamily: "inherit", fontSize: 11, padding: "6px 14px", borderRadius: 4, cursor: "pointer", letterSpacing: "0.08em", opacity: sendTestAlert.isPending ? 0.7 : 1 }}
           >
             {sendTestAlert.isPending ? "SENDING..." : "SEND TEST ALERT"}
           </button>
-          <button 
+          <button
+            onClick={handleSave}
+            disabled={updateSettings.isPending}
+            style={{ background: "#F7931A", border: "none", color: "#000", fontFamily: "inherit", fontSize: 11, padding: "6px 14px", borderRadius: 4, cursor: "pointer", fontWeight: 700, letterSpacing: "0.08em", opacity: updateSettings.isPending ? 0.7 : 1 }}
+          >
+            {updateSettings.isPending ? "SAVING..." : "SAVE CONFIG"}
+          </button>
+        </div>
+      </div>
+
+      {/* Alert Message Template */}
+      <div style={{ background: "#0D1320", border: "1px solid #1E2D40", borderRadius: 6, padding: 20, marginBottom: 16 }}>
+        <div style={{ fontSize: 11, color: "#F7931A", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>✉ Alert Message Template</div>
+        <div style={{ fontSize: 10, color: "#2A4060", lineHeight: 1.5, marginBottom: 14 }}>
+          Customise the XMPP message sent on each transaction alert. Click a token to insert it at the cursor, or type it directly.
+        </div>
+
+        {/* Token chips */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+          {TOKENS.map(t => (
+            <button
+              key={t.token}
+              onClick={() => insertToken(t.token)}
+              title={`Example: ${t.example}`}
+              style={{
+                background: "#0A1828",
+                border: "1px solid #1E3A5A",
+                borderRadius: 3,
+                color: "#F7931A",
+                fontFamily: "monospace",
+                fontSize: 10,
+                padding: "3px 8px",
+                cursor: "pointer",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {t.token}
+            </button>
+          ))}
+          <button
+            onClick={() => setFormData(prev => ({ ...prev, alertTemplate: DEFAULT_TEMPLATE }))}
+            title="Restore default template"
+            style={{
+              background: "transparent",
+              border: "1px solid #2A4060",
+              borderRadius: 3,
+              color: "#4A6080",
+              fontFamily: "inherit",
+              fontSize: 10,
+              padding: "3px 8px",
+              cursor: "pointer",
+              marginLeft: "auto",
+            }}
+          >
+            RESET DEFAULT
+          </button>
+        </div>
+
+        {/* Template textarea */}
+        <textarea
+          ref={templateRef}
+          name="alertTemplate"
+          value={formData.alertTemplate}
+          onChange={handleChange}
+          rows={6}
+          spellCheck={false}
+          style={{ ...inputStyle, resize: "vertical", lineHeight: 1.7, fontFamily: "monospace", fontSize: 11 }}
+        />
+
+        {/* Live preview */}
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 10, color: "#2A4060", letterSpacing: "0.08em", marginBottom: 6 }}>PREVIEW (sample data)</div>
+          <pre style={{
+            background: "#060C16",
+            border: "1px solid #1A2A3A",
+            borderRadius: 4,
+            color: "#8BA8C8",
+            fontFamily: "monospace",
+            fontSize: 11,
+            lineHeight: 1.7,
+            margin: 0,
+            padding: "10px 14px",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-all",
+          }}>
+            {renderPreview(formData.alertTemplate) || <span style={{ color: "#2A4060" }}>(empty template)</span>}
+          </pre>
+        </div>
+
+        <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+          <button
             onClick={handleSave}
             disabled={updateSettings.isPending}
             style={{ background: "#F7931A", border: "none", color: "#000", fontFamily: "inherit", fontSize: 11, padding: "6px 14px", borderRadius: 4, cursor: "pointer", fontWeight: 700, letterSpacing: "0.08em", opacity: updateSettings.isPending ? 0.7 : 1 }}

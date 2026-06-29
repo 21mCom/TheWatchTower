@@ -43,7 +43,8 @@ export class XmppService {
     await this.xmppClient.start();
   }
 
-  async sendAlert(body: string): Promise<void> {
+  /** Internal transport — sends a raw message body over the XMPP connection. */
+  private async _send(body: string): Promise<void> {
     if (!this.config) throw new Error("XMPP not configured");
     if (!this.xmppClient || !this._connected) {
       throw new Error("XMPP not connected");
@@ -52,6 +53,20 @@ export class XmppService {
     await this.xmppClient.send(
       xml("message", { to, type: "chat" }, xml("body", {}, body)),
     );
+  }
+
+  /** Send a transaction alert. Tests may mock this method to observe transaction-level sends. */
+  async sendAlert(body: string): Promise<void> {
+    return this._send(body);
+  }
+
+  /**
+   * Send a connection-status notification (node up/down).
+   * Calls _send directly so tests that mock sendAlert (transaction alerts only)
+   * do not intercept connection-level noise.
+   */
+  async sendConnectionAlert(body: string): Promise<void> {
+    return this._send(body);
   }
 
   isConnected(): boolean {

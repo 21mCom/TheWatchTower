@@ -15,6 +15,9 @@ export const appSettings = pgTable("app_settings", {
   xmppPassword: text("xmpp_password").notNull().default(""),
   xmppTls: boolean("xmpp_tls").notNull().default(true),
   recipientJid: text("recipient_jid").notNull().default(""),
+  alertTemplate: text("alert_template").notNull().default(
+    "[{direction}] {label}\nAmount: {amount_btc} ({amount_sats} sats)\nAddress: {address}\nTxid: {txid}\nStatus: {status}"
+  ),
 });
 
 export const insertAppSettingsSchema = createInsertSchema(appSettings);

@@ -3,7 +3,8 @@ import { formatBtc, truncateAddress, formatTimeAgo } from "@/lib/format";
 
 export default function Dashboard() {
   const { data: addresses } = useListAddresses();
-  const { data: activityPage } = useListActivity(undefined, { query: { queryKey: getListActivityQueryKey(), refetchInterval: 30000 }});
+  const activityParams = undefined;
+  const { data: activityPage } = useListActivity(activityParams, { query: { queryKey: getListActivityQueryKey(activityParams), refetchInterval: 30000 } });
 
   const addressesData = addresses || [];
   const events = activityPage?.events || [];

@@ -39,6 +39,7 @@ router.get("/", async (_req, res) => {
     xmppTls: s.xmppTls,
     recipientJid: s.recipientJid,
     xmppConfigured: !!(s.xmppJid && s.xmppPassword && s.xmppServer && s.recipientJid),
+    alertTemplate: s.alertTemplate,
   });
 });
 
@@ -65,6 +66,12 @@ router.put("/", settingsWriteLimiter, async (req, res) => {
   if (data.xmppPassword !== undefined) updates.xmppPassword = data.xmppPassword;
   if (data.xmppTls !== undefined) updates.xmppTls = data.xmppTls;
   if (data.recipientJid !== undefined) updates.recipientJid = data.recipientJid;
+  if (data.alertTemplate !== undefined) updates.alertTemplate = data.alertTemplate;
+
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No fields to update were provided." });
+    return;
+  }
 
   const [updated] = await db
     .update(appSettings)
@@ -87,6 +94,7 @@ router.put("/", settingsWriteLimiter, async (req, res) => {
     xmppTls: s.xmppTls,
     recipientJid: s.recipientJid,
     xmppConfigured: !!(s.xmppJid && s.xmppPassword && s.xmppServer && s.recipientJid),
+    alertTemplate: s.alertTemplate,
   });
 });
 

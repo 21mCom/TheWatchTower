@@ -7,9 +7,21 @@ import path from "path";
 import { existsSync } from "fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { initMonitor } from "./services/monitor";
+import { PgRateLimitStore } from "./lib/pg-rate-limit-store.js";
 
 const app: Express = express();
+
+// Trust exactly one upstream proxy hop (Umbrel's nginx app_proxy).
+//
+// This tells Express to derive req.ip from the X-Forwarded-For header set by
+// the immediate reverse proxy rather than the raw TCP remote address.  It is
+// safe to enable only because Umbrel's nginx is configured (via APP_NGINX_CONF
+// in umbrel/docker-compose.yml) to OVERWRITE any client-supplied XFF with
+// `proxy_set_header X-Forwarded-For $remote_addr` before forwarding — nginx
+// never appends to a header the client already sent.  Without that nginx-side
+// stripping, enabling trust proxy here would let an attacker forge an
+// X-Forwarded-For address and appear as a different IP to the rate limiter.
+app.set("trust proxy", 1);
 
 app.use(
   pinoHttp({
@@ -67,13 +79,30 @@ app.use(cors({
 app.use(express.json({ limit: "64kb" }));
 app.use(express.urlencoded({ extended: true, limit: "64kb" }));
 
-// General API rate limit — 120 req/min per IP as a baseline
+// General API rate limit — 120 req/min per IP as a baseline.
+// req.ip is derived from the XFF header set by Umbrel's nginx (trust proxy = 1
+// above).  nginx overwrites any client-supplied XFF with $remote_addr, so the
+// per-IP bucket is always keyed on the real connecting IP — see APP_NGINX_CONF
+// in umbrel/docker-compose.yml and xff-rate-limit-spoofing.test.ts.
+//
+// Store selection:
+// - In production (NODE_ENV !== "test" and DATABASE_URL set): PgRateLimitStore
+//   so counters survive process restarts (Umbrel's on-failure restart policy
+//   would otherwise grant every IP a fresh window on each crash).
+// - In tests / environments without Postgres: default MemoryStore so the test
+//   suite stays self-contained with no leftover counts across runs.
+const rateLimitStore =
+  process.env.DATABASE_URL && process.env.NODE_ENV !== "test"
+    ? new PgRateLimitStore(process.env.DATABASE_URL)
+    : undefined;
+
 const generalApiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please slow down." },
+  ...(rateLimitStore ? { store: rateLimitStore } : {}),
 });
 
 app.use("/api", generalApiLimiter, router);
@@ -91,10 +120,5 @@ if (staticDir && existsSync(staticDir)) {
   });
   logger.info({ staticDir }, "Serving frontend static files");
 }
-
-// Start the monitoring engine (non-blocking)
-initMonitor().catch((err) => {
-  logger.error({ err }, "Monitor init failed");
-});
 
 export default app;

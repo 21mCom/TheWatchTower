@@ -3,8 +3,8 @@
  *
  * The settingsWriteLimiter (10 req/min per IP) must be applied to PUT /settings before
  * the route handler runs. This test sends 11 requests in quick succession and asserts:
- *   - Requests 1–10 are not rejected by the rate limiter (they may return 500 because
- *     an empty-but-valid body produces an empty drizzle update, but they are NOT 429).
+ *   - Requests 1–10 are not rejected by the rate limiter (they return 400 because
+ *     an empty-but-valid body now produces a graceful "no fields" error, but they are NOT 429).
  *   - Request 11 returns HTTP 429.
  *
  * We deliberately send {} so the route handler throws before ever reaching reloadMonitor(),

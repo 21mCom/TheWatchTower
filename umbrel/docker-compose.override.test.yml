@@ -1,0 +1,75 @@
+# Docker Compose override used exclusively by the xff-nginx-proxy-test CI
+# workflow (.github/workflows/xff-nginx-proxy-test.yml).
+#
+# Usage:
+#   docker compose \
+#     -f umbrel/docker-compose.yml \
+#     -f umbrel/docker-compose.override.test.yml \
+#     up -d
+#
+# What this override does
+# -----------------------
+# 1. Adds the `getumbrel/app-proxy` image to the app_proxy service so that the
+#    real Umbrel proxy binary (which reads APP_NGINX_CONF and generates its
+#    nginx config) is used — not a hand-rolled nginx stand-in.
+#
+# 2. Exposes app_proxy's port 4000 on the host so the test client can reach it.
+#
+# 3. Enables the /api/xff-probe debug endpoint in the web service by setting
+#    XFF_PROBE_ENABLED=1.  The endpoint returns Express's req.ip (the value
+#    derived by trust-proxy logic from the XFF header that nginx wrote), making
+#    it possible to assert that the forged client XFF never reaches req.ip.
+#
+# 4. Adds a db service with a real postgres:16-alpine image so the web service
+#    can start up and reach /api/xff-probe (Express runs the DB migration on
+#    boot and won't serve requests until it succeeds).
+#
+# 5. Overrides the web image to the locally built tag so CI does not need to
+#    push to or pull from the registry.  The CI workflow builds the image as
+#    watchtower-local:test before running docker compose up.
+
+services:
+  app_proxy:
+    # Real Umbrel reverse-proxy image: reads APP_NGINX_CONF from the env and
+    # builds its nginx config at startup.  Listens on :4000 internally.
+    #
+    # PINNED INTENTIONALLY — do not change to :latest.
+    # ------------------------------------------------
+    # This test asserts that the proxy overwrites a client-supplied
+    # X-Forwarded-For with $remote_addr.  If Umbrel ships a new app-proxy image
+    # that changes how APP_NGINX_CONF is injected (or adds/removes a directive),
+    # both this test and production XFF behavior would change silently on the
+    # next deploy with no code review.  Pinning to a semver tag + digest makes
+    # any upgrade a deliberate, reviewed change.
+    #
+    # Pinned to:   getumbrel/app-proxy 1.7.0
+    # Pinned on:   2026-06-29 (image published upstream 2026-04-20)
+    # Digest:      sha256:ec0de0b944a2e63d52fdd82b3760d90a35f8b442d17a8407afdee3af3e842d5a
+    #
+    # How to update:
+    #   1. The "Check for newer Umbrel app-proxy image" GitHub Actions workflow
+    #      (.github/workflows/app-proxy-version-check.yml) runs weekly and opens
+    #      an alert when a newer tag is published on Docker Hub.
+    #   2. To bump, find the new tag + digest:
+    #        curl -s "https://hub.docker.com/v2/repositories/getumbrel/app-proxy/tags?page_size=25&ordering=last_updated"
+    #      and replace BOTH the tag and @sha256 digest below, plus this comment.
+    #   3. Re-run this XFF test to confirm the new image still strips XFF.
+    image: getumbrel/app-proxy:1.7.0@sha256:ec0de0b944a2e63d52fdd82b3760d90a35f8b442d17a8407afdee3af3e842d5a
+    ports:
+      - "14000:4000"
+
+  web:
+    # Use the image built locally by the CI workflow (not the registry tag).
+    image: watchtower-local:test
+    environment:
+      # Enable the debug endpoint used to assert req.ip through the proxy.
+      XFF_PROBE_ENABLED: "1"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: watchtower
+      POSTGRES_PASSWORD: watchtower
+      POSTGRES_DB: watchtower
+    # No volume mount — ephemeral data is fine for this test.
+    volumes: []

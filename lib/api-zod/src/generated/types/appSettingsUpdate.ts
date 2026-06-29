@@ -18,4 +18,5 @@ export interface AppSettingsUpdate {
   xmppPassword?: string;
   xmppTls?: boolean;
   recipientJid?: string;
+  alertTemplate?: string;
 }

@@ -197,16 +197,34 @@ export class ElectrumClient extends EventEmitter {
   }
 
   private rpc(method: string, params: unknown[]): Promise<unknown> {
-    return new Promise((resolve, reject) => {
+    const timeoutMs = process.env.ELECTRUM_RPC_TIMEOUT_MS
+      ? parseInt(process.env.ELECTRUM_RPC_TIMEOUT_MS, 10)
+      : 30_000;
+
+    let requestId: number | null = null;
+
+    const call = new Promise((resolve, reject) => {
       if (!this.socket || !this._connected) {
         reject(new Error("Not connected"));
         return;
       }
       const id = this.nextId++;
+      requestId = id;
       this.pending.set(id, { resolve, reject });
       const msg = JSON.stringify({ id, method, params }) + "\n";
       this.socket.write(msg);
     });
+
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => {
+        if (requestId !== null) {
+          this.pending.delete(requestId);
+        }
+        reject(new Error(`Electrum RPC timed out after ${timeoutMs}ms: ${method}`));
+      }, timeoutMs),
+    );
+
+    return Promise.race([call, timeout]);
   }
 
   setNotificationHandler(handler: ScripthashNotificationHandler) {
@@ -256,6 +274,11 @@ export class ElectrumClient extends EventEmitter {
   /** Number of scripthashes currently tracked for re-subscription. Exposed for testing. */
   get subscriptionCount(): number {
     return this.subscriptions.size;
+  }
+
+  /** Number of in-flight RPC requests currently waiting for a response. Exposed for testing. */
+  get pendingCount(): number {
+    return this.pending.size;
   }
 
   destroy() {

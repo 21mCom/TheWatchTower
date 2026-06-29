@@ -8,7 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/services/bitcoin.test.ts src/services/__tests__/monitor-reconnect.test.ts src/services/__tests__/reconnect-loop.test.ts src/services/__tests__/partial-subscription.test.ts src/services/__tests__/catchup-notification-race.test.ts src/services/__tests__/double-reconnect-race.test.ts src/services/__tests__/catchup-mid-iteration-interrupt.test.ts src/services/__tests__/mempool-confirmed-upgrade.test.ts src/routes/__tests__/settings-put-rate-limit.test.ts src/routes/__tests__/settings-post-rate-limit.test.ts src/services/__tests__/electrum-tls-toggle.test.ts"
+    "test": "tsx --test src/services/bitcoin.test.ts src/services/__tests__/monitor-reconnect.test.ts src/services/__tests__/reconnect-loop.test.ts src/services/__tests__/partial-subscription.test.ts src/services/__tests__/catchup-notification-race.test.ts src/services/__tests__/double-reconnect-race.test.ts src/services/__tests__/catchup-mid-iteration-interrupt.test.ts src/services/__tests__/mempool-confirmed-upgrade.test.ts src/services/__tests__/reconnect-catchup-mempool-race.test.ts src/routes/__tests__/settings-put-rate-limit.test.ts src/routes/__tests__/settings-post-rate-limit.test.ts src/routes/__tests__/settings-put-empty-body.test.ts src/routes/__tests__/settings-put-port-validation.test.ts src/services/__tests__/electrum-tls-toggle.test.ts src/routes/__tests__/general-api-rate-limit.test.ts src/services/__tests__/reload-monitor-mid-subscribe.test.ts src/routes/__tests__/xff-rate-limit-spoofing.test.ts src/routes/__tests__/rate-limit-persistence.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
@@ -23,6 +23,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
+    "pg": "^8.22.0",
     "pino": "^9.14.0",
     "pino-http": "^10.5.0"
   },
@@ -32,6 +33,7 @@
     "@types/express": "^5.0.6",
     "@types/express-rate-limit": "^6.0.2",
     "@types/node": "catalog:",
+    "@types/pg": "^8.11.14",
     "esbuild": "^0.28.1",
     "esbuild-plugin-pino": "^2.3.3",
     "pino-pretty": "^13.1.3",

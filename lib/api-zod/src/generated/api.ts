@@ -110,16 +110,17 @@ export const GetSettingsResponse = zod.object({
  */
 export const UpdateSettingsBody = zod.object({
   "electrumHost": zod.string().optional(),
-  "electrumPort": zod.number().optional(),
+  "electrumPort": zod.number().int().min(1).max(65535).optional(),
   "electrumTls": zod.boolean().optional(),
   "electrumAllowSelfSigned": zod.boolean().optional(),
   "confirmationThreshold": zod.number().optional(),
   "xmppServer": zod.string().optional(),
-  "xmppPort": zod.number().optional(),
+  "xmppPort": zod.number().int().min(1).max(65535).optional(),
   "xmppJid": zod.string().optional(),
   "xmppPassword": zod.string().optional(),
   "xmppTls": zod.boolean().optional(),
-  "recipientJid": zod.string().optional()
+  "recipientJid": zod.string().optional(),
+  "alertTemplate": zod.string().optional()
 })
 
 export const UpdateSettingsResponse = zod.object({
@@ -133,7 +134,8 @@ export const UpdateSettingsResponse = zod.object({
   "xmppJid": zod.string(),
   "xmppTls": zod.boolean(),
   "recipientJid": zod.string(),
-  "xmppConfigured": zod.boolean()
+  "xmppConfigured": zod.boolean(),
+  "alertTemplate": zod.string()
 })
 
 

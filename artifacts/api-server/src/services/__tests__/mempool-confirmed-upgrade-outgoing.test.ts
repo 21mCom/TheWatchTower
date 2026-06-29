@@ -1,13 +1,17 @@
 /**
- * Integration test: mempool→confirmed upgrade does not fire a duplicate alert
- * when two concurrent processScripthashHistory calls race on the same transaction
- * after a reconnect.
+ * Integration test: outgoing mempool→confirmed upgrade does not fire a duplicate
+ * alert when two concurrent processScripthashHistory calls race on the same
+ * outgoing transaction after a reconnect.
+ *
+ * This mirrors mempool-confirmed-upgrade.test.ts (which covers direction="incoming")
+ * but seeds a mempool alertEvents row with direction="outgoing" to confirm the
+ * same conditional UPDATE + .returning() guard works for the outgoing upgrade path.
  *
  * Race scenario:
  *  1. Start a mock Electrum TCP server that initially reports no history (null status).
  *  2. Seed the DB with a watched address, settings pointing to the mock server, and an
- *     existing "mempool" alert_events row for a transaction — simulating a prior
- *     unconfirmed alert that was stored before the node went offline.
+ *     existing "mempool" alertEvents row for an outgoing transaction — simulating a prior
+ *     spend alert that was stored before the node went offline.
  *  3. Call initMonitor(). Subscription returns null → subscribeAllAddresses skips
  *     processScripthashHistory. The mempool row stays untouched.
  *  4. Inject a confirmed history entry into the mock server (same txid, height > 0).
@@ -24,8 +28,11 @@
  *       - The patched XMPP sendAlert is called exactly once for the confirmed transaction.
  *
  * The fix in processScripthashHistory (conditional WHERE status='mempool' + .returning())
- * ensures only the UPDATE that actually transitions the row wins; all concurrent attempts
- * that lose the race get 0 rows back and skip the alert.
+ * ensures only the UPDATE that actually transitions the row wins; concurrent attempts that
+ * lose the race get 0 rows back and skip the alert.
+ *
+ * The mock server also handles blockchain.transaction.get (for prevout resolution) so
+ * that if processNewTx is unexpectedly reached it does not hang waiting for a response.
  */
 
 import { test, before, after } from "node:test";
@@ -45,23 +52,37 @@ function scriptToScripthash(scriptHex: string): string {
 }
 
 // Unique 20-byte witness program — must not collide with other test files.
-const WITNESS_PROGRAM_HEX = "0000000000000000000000000000000000000004";
+const WITNESS_PROGRAM_HEX = "0000000000000000000000000000000000000005";
 const OUTPUT_SCRIPT_HEX = "0014" + WITNESS_PROGRAM_HEX;
 const TEST_SCRIPTHASH = scriptToScripthash(OUTPUT_SCRIPT_HEX);
 
-const TEST_ADDR_ID = `upgrade-test-${crypto.randomUUID()}`;
-const TEST_ADDRESS_LABEL = "Test Upgrade Address";
-const TEST_TXID = "ee".repeat(32); // unique 64-char hex
+const TEST_ADDR_ID = `upgrade-outgoing-test-${crypto.randomUUID()}`;
+const TEST_ADDRESS_LABEL = "Test Outgoing Upgrade Address";
+const TEST_TXID = "ff".repeat(32); // unique 64-char hex — different from incoming test
 
-// Pre-seeded mempool row values — the upgrade path reuses these from the existing
-// row, so no raw-transaction decode is needed on the reconnect path.
-const SEEDED_AMOUNT_SATS = 45_000;
-const SEEDED_DIRECTION = "incoming" as const;
+// Pre-seeded outgoing mempool row values — the upgrade path reuses these from the
+// existing row, so no raw-transaction decode or prevout lookup is needed on the
+// reconnect upgrade path (the monitor reads evt.direction / evt.amountSats directly).
+const SEEDED_AMOUNT_SATS = 62_000;
+const SEEDED_DIRECTION = "outgoing" as const;
 
 // Confirmed block height the mock server will report for this tx.
 // With chain tip 800_001 → confs = 800_001 − 800_000 + 1 = 2 ≥ threshold 1.
 const TX_BLOCK_HEIGHT = 800_000;
 const CHAIN_TIP_HEIGHT = 800_001;
+
+// A minimal raw transaction hex returned by the mock blockchain.transaction.get handler.
+// The upgrade path never calls getTransaction, but the mock must respond if processNewTx
+// is unexpectedly reached so the test does not hang.
+const MINIMAL_RAW_TX =
+  "01000000" + // version
+  "01" + // input count
+  "00".repeat(32) + "ffffffff" + // prevhash (32 bytes) + previndex
+  "00" + // script length
+  "ffffffff" + // sequence
+  "01" + // output count
+  "a0860100000000000017a914" + "00".repeat(20) + "87" + // 100000 sat P2SH output (dummy)
+  "00000000"; // locktime
 
 // ── Mock Electrum TCP server ──────────────────────────────────────────────────
 
@@ -101,15 +122,26 @@ function handleRequest(
       respond(socket, id, { height: CHAIN_TIP_HEIGHT });
       break;
 
-    case "blockchain.scripthash.subscribe":
-      // Return null while mockHistory is empty (initial connect) so
-      // subscribeAllAddresses skips processScripthashHistory.
-      // After history is injected (reconnect), return non-null so the
-      // notification handler fires the first concurrent upgrade path.
-      respond(socket, id, mockHistory.length > 0 ? "status-upgrade-v1" : null);
+    case "blockchain.scripthash.subscribe": {
+      // Only return non-null status for our specific test scripthash.
+      // Other watched addresses (e.g. leftover rows from parallel test runs)
+      // get null so processScripthashHistory is never triggered for them,
+      // preventing spurious extra XMPP sends that break the xmppSendCount === 1 assertion.
+      const subScripthash = (msg.params as string[])[0];
+      const isOurs = subScripthash === TEST_SCRIPTHASH;
+      respond(socket, id, isOurs && mockHistory.length > 0 ? "status-upgrade-outgoing-v1" : null);
       break;
+    }
 
     case "blockchain.scripthash.get_history": {
+      // Only return our test history for the specific scripthash under test;
+      // return empty for all others so unrelated addresses don't trigger alerts.
+      const histScripthash = (msg.params as string[])[0];
+      if (histScripthash !== TEST_SCRIPTHASH) {
+        respond(socket, id, []);
+        break;
+      }
+
       getHistoryCallCount++;
       const callIndex = getHistoryCallCount;
 
@@ -125,6 +157,13 @@ function handleRequest(
       }
       break;
     }
+
+    case "blockchain.transaction.get":
+      // Respond with a minimal raw tx hex so processNewTx does not hang if
+      // it is unexpectedly reached. The outgoing upgrade path reads amountSats
+      // and direction from the pre-seeded row and never calls getTransaction.
+      respond(socket, id, MINIMAL_RAW_TX);
+      break;
 
     default:
       respond(socket, id, null);
@@ -205,12 +244,12 @@ async function seedTestData(): Promise<void> {
     .values({
       id: TEST_ADDR_ID,
       label: TEST_ADDRESS_LABEL,
-      address: `test-placeholder-upgrade-${TEST_ADDR_ID}`,
+      address: `test-placeholder-upgrade-outgoing-${TEST_ADDR_ID}`,
       scripthash: TEST_SCRIPTHASH,
     })
     .onConflictDoNothing();
 
-  // Pre-seed a "mempool" alert row — simulating a transaction that was seen
+  // Pre-seed a "mempool" outgoing alert row — simulating a spend that was seen
   // unconfirmed before the node went offline.
   // On reconnect, two concurrent processScripthashHistory calls must race to
   // upgrade this row to "confirmed". The fix ensures only one wins.
@@ -291,14 +330,11 @@ after(async () => {
 // ── The test ──────────────────────────────────────────────────────────────────
 
 test(
-  "concurrent mempool→confirmed upgrades after reconnect produce exactly one confirmed row and one XMPP send",
+  "outgoing: concurrent mempool→confirmed upgrades after reconnect produce exactly one confirmed row and one XMPP send",
   async () => {
     // Patch the module-level XMPP singleton before initMonitor() so
     // sendTransactionAlert reaches sendAlert instead of bailing out at the
     // isConfigured/isConnected guards.
-    // Connection-status alerts ("Node connection restored." etc.) are sent via
-    // sendConnectionAlert — a separate method — so they never reach this mock
-    // and no txid filtering is needed here.
     const xmppSvc = getXmpp();
     let xmppSendCount = 0;
     const origIsConfigured = xmppSvc.isConfigured.bind(xmppSvc);
@@ -315,7 +351,7 @@ test(
       await initMonitor();
 
       // Allow subscribeAllAddresses to complete. With null status, nothing
-      // is inserted and the pre-seeded mempool row stays untouched.
+      // is processed and the pre-seeded outgoing mempool row stays untouched.
       await sleep(400);
 
       const [before] = await db
@@ -326,17 +362,20 @@ test(
       assert.equal(
         before?.status,
         "mempool",
-        "Pre-seeded mempool row should still be 'mempool' before the outage",
+        "Pre-seeded outgoing mempool row should still be 'mempool' before the outage",
+      );
+      assert.equal(
+        before?.direction,
+        "outgoing",
+        "Pre-seeded row must have direction='outgoing'",
       );
 
       // ── Step 2: inject confirmed history and simulate outage ──────────────
-      // Set history before the outage so the reconnect catch-up finds the tx
-      // as already confirmed (height > 0, meets threshold).
       mockHistory = [{ tx_hash: TEST_TXID, height: TX_BLOCK_HEIGHT }];
       getHistoryCallCount = 0; // reset before the reconnect race
       simulateOutage();
 
-      // ── Step 3: wait for the upgrade to propagate ─────────────────────────
+      // ── Step 3: wait for the outgoing upgrade to propagate ────────────────
       // On reconnect the ElectrumClient:
       //   a) Re-subscribes → mock returns non-null → notification handler fires
       //      processScripthashHistory (path A)
@@ -345,7 +384,7 @@ test(
       //
       // The mock server delays the first get_history response by 120 ms so path
       // B's SELECT also runs before either UPDATE fires, creating a true concurrent
-      // race on the mempool→confirmed upgrade.
+      // race on the outgoing mempool→confirmed upgrade.
       const confirmedRow = await waitForConfirmed(TEST_ADDR_ID, TEST_TXID);
 
       // Allow all in-flight concurrent paths to fully settle.
@@ -362,17 +401,27 @@ test(
       // ── Step 5: assert exactly one confirmed row ──────────────────────────
       assert.ok(
         confirmedRow !== null,
-        "Expected the mempool row to be upgraded to 'confirmed' within the timeout",
+        "Expected the outgoing mempool row to be upgraded to 'confirmed' within the timeout",
       );
       assert.equal(
         confirmedRow!.status,
         "confirmed",
-        "Row status must be 'confirmed' after the upgrade",
+        "Row status must be 'confirmed' after the outgoing upgrade",
+      );
+      assert.equal(
+        confirmedRow!.direction,
+        "outgoing",
+        "Row direction must remain 'outgoing' after upgrade",
+      );
+      assert.equal(
+        confirmedRow!.amountSats,
+        SEEDED_AMOUNT_SATS,
+        "amountSats must match the seeded outgoing amount",
       );
       assert.equal(
         confirmedRow!.txid,
         TEST_TXID,
-        "txid must match the seeded transaction",
+        "txid must match the seeded outgoing transaction",
       );
 
       const [{ n: rowCount }] = await db
@@ -383,7 +432,7 @@ test(
       assert.equal(
         rowCount,
         1,
-        `Expected exactly 1 alert_events row after the concurrent upgrade race, ` +
+        `Expected exactly 1 alert_events row after the concurrent outgoing upgrade race, ` +
           `but found ${rowCount}. The unique index should prevent duplicate rows.`,
       );
 
@@ -391,10 +440,10 @@ test(
       assert.equal(
         xmppSendCount,
         1,
-        `Expected exactly 1 XMPP confirmed alert to be sent, but sendAlert was ` +
-          `called ${xmppSendCount} time(s) for txid ${TEST_TXID}. The conditional ` +
-          `UPDATE + .returning() guard must ensure only the winning UPDATE triggers ` +
-          `the alert.`,
+        `Expected exactly 1 XMPP confirmed alert to be sent for the outgoing tx, ` +
+          `but sendAlert was called ${xmppSendCount} time(s) for txid ${TEST_TXID}. ` +
+          `The conditional UPDATE + .returning() guard must ensure only the winning ` +
+          `UPDATE triggers the alert regardless of transaction direction.`,
       );
     } finally {
       // Restore original XMPP methods so other tests aren't affected.
