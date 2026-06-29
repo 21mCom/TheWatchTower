@@ -7,6 +7,9 @@ set -e
 echo "Initializing database schema..."
 node /app/server/dist/migrate.mjs
 
-# Start the Express server (serves both /api and static files on a single port)
+# Start the Express server (serves both /api and static files on a single port).
+# Note: `exec` does not accept inline VAR=value assignments, so export first.
 echo "Starting Watchtower server on port ${PORT:-3000}..."
-exec PORT="${PORT:-3000}" STATIC_DIR="/app/public" node --enable-source-maps /app/server/dist/index.mjs
+export PORT="${PORT:-3000}"
+export STATIC_DIR="${STATIC_DIR:-/app/public}"
+exec node --enable-source-maps /app/server/dist/index.mjs
