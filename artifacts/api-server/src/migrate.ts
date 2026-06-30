@@ -48,12 +48,17 @@ async function main() {
         xmpp_tls                    BOOLEAN NOT NULL DEFAULT TRUE,
         recipient_jid               TEXT,
         confirmation_threshold      INTEGER NOT NULL DEFAULT 1,
+        alert_template              TEXT NOT NULL DEFAULT '[{direction}] {label}\nAmount: {amount_btc} ({amount_sats} sats)\nAddress: {address}\nTxid: {txid}\nStatus: {status}',
         updated_at                  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
 
       -- Idempotent upgrade: add electrum_allow_self_signed to existing installs
       ALTER TABLE app_settings
         ADD COLUMN IF NOT EXISTS electrum_allow_self_signed BOOLEAN NOT NULL DEFAULT FALSE;
+
+      -- Idempotent upgrade: add alert_template to existing installs (schema-drift fix)
+      ALTER TABLE app_settings
+        ADD COLUMN IF NOT EXISTS alert_template TEXT NOT NULL DEFAULT '[{direction}] {label}\nAmount: {amount_btc} ({amount_sats} sats)\nAddress: {address}\nTxid: {txid}\nStatus: {status}';
 
       INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
