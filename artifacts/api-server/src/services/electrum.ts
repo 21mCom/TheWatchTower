@@ -46,11 +46,18 @@ export class ElectrumClient extends EventEmitter {
         settled = true;
         if (err) {
           reject(err);
-          // Even on initial failure, schedule reconnect
-          if (!this.destroyed) {
-            this.reconnectTimer = setTimeout(() => this.reconnect(), this.reconnectDelayMs);
-          }
+          // Schedule a single reconnect. scheduleReconnect is idempotent, so
+          // the 'close' event that fires right after 'error' will not stack a
+          // second timer — this is what prevents the runaway reconnect storm.
+          this.scheduleReconnect();
         } else {
+          // Successful connect — cancel any pending reconnect timer so a
+          // timer scheduled by an earlier failure cannot fire a redundant
+          // reconnect after we are already connected.
+          if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+          }
           resolve();
         }
       };
@@ -98,11 +105,8 @@ export class ElectrumClient extends EventEmitter {
         }
         this.pending.clear();
         this.emit("disconnected");
-        // Schedule reconnect (even if we never successfully connected)
-        if (!this.destroyed) {
-          if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-          this.reconnectTimer = setTimeout(() => this.reconnect(), this.reconnectDelayMs);
-        }
+        // Schedule reconnect (even if we never successfully connected).
+        this.scheduleReconnect();
       });
 
       sock.on("error", (err: Error) => {
@@ -169,9 +173,25 @@ export class ElectrumClient extends EventEmitter {
     }
   }
 
+  /**
+   * Schedule a single reconnect attempt. Idempotent: if a reconnect is already
+   * pending, this is a no-op. Several event sources (the socket 'error' and
+   * 'close' handlers, and a failed reconnect) all call this, so the guard is
+   * essential — without it each failure scheduled multiple overlapping timers,
+   * which doubled every cycle and grew into a reconnect storm that starved the
+   * event loop and prevented the HTTP server from ever binding its port.
+   */
+  private scheduleReconnect() {
+    if (this.destroyed) return;
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.reconnect();
+    }, this.reconnectDelayMs);
+  }
+
   private async reconnect() {
     if (this.destroyed) return;
-    this.reconnectTimer = null;
     try {
       await this.connect();
       // Restore header subscription
@@ -190,9 +210,7 @@ export class ElectrumClient extends EventEmitter {
       }
       this.emit("reconnected");
     } catch {
-      if (!this.destroyed) {
-        this.reconnectTimer = setTimeout(() => this.reconnect(), this.reconnectDelayMs);
-      }
+      this.scheduleReconnect();
     }
   }
 
