@@ -55,6 +55,13 @@ app.use(helmet({
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'self'"],
+      // Remove helmet's default `upgrade-insecure-requests` directive. Umbrel
+      // serves this app over plain HTTP (http://umbrel.local:<port>) with no
+      // TLS, so the browser must NOT auto-upgrade sub-resource requests
+      // (JS/CSS/favicon) to https — that yields net::ERR_SSL_PROTOCOL_ERROR for
+      // every asset and a blank page. helmet keeps this default unless we
+      // explicitly disable it by setting the directive to null.
+      upgradeInsecureRequests: null,
     },
   },
 }));
