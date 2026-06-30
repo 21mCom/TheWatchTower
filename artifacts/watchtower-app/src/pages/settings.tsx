@@ -197,6 +197,13 @@ export default function Settings() {
           <span style={{ fontSize: 11, color: nodeStatus?.connected ? "var(--wt-status-ok)" : "var(--wt-status-error)" }}>
             {nodeStatus?.connected ? `Connected — block ${nodeStatus.blockHeight || "..."}` : (nodeStatus?.message || "Connection failed")}
           </span>
+          <button
+            onClick={handleSave}
+            disabled={updateSettings.isPending}
+            style={{ marginLeft: "auto", background: "var(--wt-brand)", border: "none", color: "#000", fontFamily: "inherit", fontSize: 11, padding: "6px 14px", borderRadius: 4, cursor: "pointer", fontWeight: 700, letterSpacing: "0.08em", opacity: updateSettings.isPending ? 0.7 : 1 }}
+          >
+            {updateSettings.isPending ? "SAVING..." : "SAVE CONFIG"}
+          </button>
         </div>
       </div>
 
