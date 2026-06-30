@@ -61,6 +61,24 @@
   --wt-text-secondary: #4B6480;
   --wt-text-muted:  #5B6F87;
   --wt-text-dim:    #9AAFC7;
+  --wt-chip-bg:        #EDF3FA;
+  --wt-chip-border:    #BDCADA;
+  --wt-preview-bg:     #F8FAFC;
+  --wt-preview-border: #BDCADA;
+  --wt-preview-text:   #4B6480;
+  /* App shell (header / sidebar / nav chrome) */
+  --wt-topbar-bg:      #EBF0F7;
+  --wt-sidebar-bg:     #E3EAF2;
+  --wt-nav-active-bg:  #D4DEF0;
+  --wt-nav-inactive:   #7A8FA6;
+  --wt-toggle-border:  #BDCADA;
+  --wt-status-muted:   #7A8FA6;
+  /* Brand + status colors (shared across shell and pages) */
+  --wt-brand:          #F7931A;   /* Bitcoin orange */
+  --wt-status-ok:      #22C55E;   /* connected / incoming / confirmed */
+  --wt-status-error:   #EF4444;   /* offline */
+  --wt-status-out:     #F87171;   /* outgoing */
+  --wt-status-warning: #FBBF24;   /* mempool / pending */
 
   --background: 210 33% 96%;       /* #F1F5FA — light blue-grey shell */
   --foreground: 220 40% 11%;       /* #0D1520 — dark navy text */
@@ -114,6 +132,24 @@
   --wt-text-secondary: #94A3B8;
   --wt-text-muted:  #4A6080;
   --wt-text-dim:    #2A4060;
+  --wt-chip-bg:        #0A1828;
+  --wt-chip-border:    #1E3A5A;
+  --wt-preview-bg:     #060C16;
+  --wt-preview-border: #1A2A3A;
+  --wt-preview-text:   #8BA8C8;
+  /* App shell (header / sidebar / nav chrome) */
+  --wt-topbar-bg:      #0D1320;
+  --wt-sidebar-bg:     #0D1320;
+  --wt-nav-active-bg:  #142030;
+  --wt-nav-inactive:   #4A6080;
+  --wt-toggle-border:  #2A4060;
+  --wt-status-muted:   #4A5568;
+  /* Brand + status colors (shared across shell and pages) */
+  --wt-brand:          #F7931A;   /* Bitcoin orange */
+  --wt-status-ok:      #22C55E;   /* connected / incoming / confirmed */
+  --wt-status-error:   #EF4444;   /* offline */
+  --wt-status-out:     #F87171;   /* outgoing */
+  --wt-status-warning: #FBBF24;   /* mempool / pending */
 
   --background: 220 35% 7%;
   --foreground: 214 32% 91%;

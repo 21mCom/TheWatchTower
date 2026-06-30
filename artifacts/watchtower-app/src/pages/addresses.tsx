@@ -135,14 +135,14 @@ export default function Addresses() {
         <h1 style={{ fontSize: 13, color: "var(--wt-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", margin: 0 }}>Watched Addresses</h1>
         <button
           onClick={() => { setAddOpen(!addOpen); setMode("single"); }}
-          style={{ background: "#F7931A", border: "none", color: "#000", fontSize: 11, fontFamily: "inherit", padding: "7px 14px", borderRadius: 4, cursor: "pointer", fontWeight: 700, letterSpacing: "0.08em" }}
+          style={{ background: "var(--wt-brand)", border: "none", color: "#000", fontSize: 11, fontFamily: "inherit", padding: "7px 14px", borderRadius: 4, cursor: "pointer", fontWeight: 700, letterSpacing: "0.08em" }}
         >
           + ADD ADDRESS
         </button>
       </div>
 
       {addOpen && (
-        <div style={{ background: "var(--wt-card-bg)", border: "1px solid #F7931A44", borderRadius: 6, padding: 20, marginBottom: 20 }}>
+        <div style={{ background: "var(--wt-card-bg)", border: "1px solid color-mix(in srgb, var(--wt-brand) 27%, transparent)", borderRadius: 6, padding: 20, marginBottom: 20 }}>
           {/* Mode toggle */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <div style={{ fontSize: 11, color: "var(--wt-text-muted)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
@@ -154,10 +154,10 @@ export default function Addresses() {
                   key={m}
                   onClick={() => setMode(m)}
                   style={{
-                    background: mode === m ? "#F7931A22" : "transparent",
+                    background: mode === m ? "color-mix(in srgb, var(--wt-brand) 13%, transparent)" : "transparent",
                     border: "none",
                     borderRight: m === "single" ? "1px solid var(--wt-border)" : "none",
-                    color: mode === m ? "#F7931A" : "var(--wt-text-muted)",
+                    color: mode === m ? "var(--wt-brand)" : "var(--wt-text-muted)",
                     fontFamily: "inherit",
                     fontSize: 10,
                     padding: "4px 12px",
@@ -218,7 +218,7 @@ export default function Addresses() {
                   </div>
                 )}
                 {bulkProgress && (
-                  <div style={{ fontSize: 10, color: "#F7931A", marginTop: 4 }}>{bulkProgress}</div>
+                  <div style={{ fontSize: 10, color: "var(--wt-brand)", marginTop: 4 }}>{bulkProgress}</div>
                 )}
               </div>
             )}
@@ -234,7 +234,7 @@ export default function Addresses() {
               <button
                 onClick={mode === "single" ? handleWatch : handleBulkWatch}
                 disabled={isBusy || (mode === "single" ? (!label || !address) : (!label || parsedBulk.length === 0))}
-                style={{ background: "#F7931A", border: "none", color: "#000", fontFamily: "inherit", fontSize: 11, padding: "6px 14px", borderRadius: 4, cursor: "pointer", fontWeight: 700, opacity: isBusy ? 0.7 : 1 }}
+                style={{ background: "var(--wt-brand)", border: "none", color: "#000", fontFamily: "inherit", fontSize: 11, padding: "6px 14px", borderRadius: 4, cursor: "pointer", fontWeight: 700, opacity: isBusy ? 0.7 : 1 }}
               >
                 {isBusy
                   ? (bulkProgress ?? "SAVING…")
@@ -254,7 +254,7 @@ export default function Addresses() {
         )}
         {addressesData.map((a, i) => (
           <div key={a.id} style={{ padding: "14px 16px", borderBottom: i < addressesData.length - 1 ? "1px solid var(--wt-divider)" : "none", display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E", flexShrink: 0, boxShadow: "0 0 5px #22C55E66" }} />
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--wt-status-ok)", flexShrink: 0, boxShadow: "0 0 5px color-mix(in srgb, var(--wt-status-ok) 40%, transparent)" }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               {editId === a.id ? (
                 <input
@@ -265,7 +265,7 @@ export default function Addresses() {
                   }}
                   onBlur={e => handleUpdate(a.id, e.target.value, a.address)}
                   autoFocus
-                  style={{ ...inputStyle, border: "1px solid #F7931A", marginBottom: 2 }}
+                  style={{ ...inputStyle, border: "1px solid var(--wt-brand)", marginBottom: 2 }}
                 />
               ) : (
                 <div style={{ fontSize: 12, color: "var(--wt-text)", marginBottom: 2 }}>{a.label}</div>
@@ -276,7 +276,7 @@ export default function Addresses() {
               <div style={{ fontSize: 10, color: "var(--wt-text-muted)" }}>{formatTimeAgo(a.createdAt)}</div>
             </div>
             <button onClick={() => setEditId(a.id)} style={{ background: "transparent", border: "1px solid var(--wt-border)", borderRadius: 3, color: "var(--wt-text-muted)", fontFamily: "inherit", fontSize: 10, padding: "3px 8px", cursor: "pointer" }}>EDIT</button>
-            <button onClick={() => handleDelete(a.id)} style={{ background: "transparent", border: "1px solid #7F1D1D44", borderRadius: 3, color: "#F87171", fontFamily: "inherit", fontSize: 10, padding: "3px 8px", cursor: "pointer" }}>RM</button>
+            <button onClick={() => handleDelete(a.id)} style={{ background: "transparent", border: "1px solid #7F1D1D44", borderRadius: 3, color: "var(--wt-status-out)", fontFamily: "inherit", fontSize: 10, padding: "3px 8px", cursor: "pointer" }}>RM</button>
           </div>
         ))}
       </div>

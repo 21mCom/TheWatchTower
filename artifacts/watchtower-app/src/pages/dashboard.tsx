@@ -18,12 +18,12 @@ export default function Dashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
         <div style={{ background: "var(--wt-card-bg)", border: "1px solid var(--wt-border)", borderRadius: 6, padding: "14px 16px" }}>
           <div style={{ fontSize: 10, color: "var(--wt-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>Watching</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#F7931A" }}>{addressesData.length}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--wt-brand)" }}>{addressesData.length}</div>
           <div style={{ fontSize: 10, color: "var(--wt-text-dim)", marginTop: 2 }}>addresses</div>
         </div>
         <div style={{ background: "var(--wt-card-bg)", border: "1px solid var(--wt-border)", borderRadius: 6, padding: "14px 16px" }}>
           <div style={{ fontSize: 10, color: "var(--wt-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>Recent Activity</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#22C55E" }}>{events.length}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--wt-status-ok)" }}>{events.length}</div>
           <div style={{ fontSize: 10, color: "var(--wt-text-dim)", marginTop: 2 }}>recorded events</div>
         </div>
       </div>
@@ -57,10 +57,10 @@ export default function Dashboard() {
             ) : (
               events.slice(0, 5).map(a => (
                 <div key={a.id} style={{ background: "var(--wt-card-bg)", border: `1px solid ${a.direction === "incoming" ? "#14532D44" : "#7F1D1D44"}`, borderRadius: 5, padding: "8px 12px", display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={{ fontSize: 10, color: a.direction === "incoming" ? "#22C55E" : "#F87171", letterSpacing: "0.1em" }}>{a.direction === "incoming" ? "IN" : "OUT"}</span>
+                  <span style={{ fontSize: 10, color: a.direction === "incoming" ? "var(--wt-status-ok)" : "var(--wt-status-out)", letterSpacing: "0.1em" }}>{a.direction === "incoming" ? "IN" : "OUT"}</span>
                   <span style={{ fontSize: 11, color: "var(--wt-text-secondary)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.addressLabel || truncateAddress(a.address)}</span>
-                  <span style={{ fontSize: 12, color: a.direction === "incoming" ? "#22C55E" : "#F87171", fontWeight: 600 }}>{a.direction === "incoming" ? "+" : "−"}{formatBtc(a.amountSats)}</span>
-                  <span style={{ fontSize: 10, color: a.status === "mempool" ? "#FBBF24" : "#22C55E", padding: "2px 6px", border: `1px solid ${a.status === "mempool" ? "#FBBF2444" : "#22C55E44"}`, borderRadius: 3 }}>{a.status === "mempool" ? "MEMPOOL" : "CONF"}</span>
+                  <span style={{ fontSize: 12, color: a.direction === "incoming" ? "var(--wt-status-ok)" : "var(--wt-status-out)", fontWeight: 600 }}>{a.direction === "incoming" ? "+" : "−"}{formatBtc(a.amountSats)}</span>
+                  <span style={{ fontSize: 10, color: a.status === "mempool" ? "var(--wt-status-warning)" : "var(--wt-status-ok)", padding: "2px 6px", border: `1px solid ${a.status === "mempool" ? "color-mix(in srgb, var(--wt-status-warning) 27%, transparent)" : "color-mix(in srgb, var(--wt-status-ok) 27%, transparent)"}`, borderRadius: 3 }}>{a.status === "mempool" ? "MEMPOOL" : "CONF"}</span>
                   <span style={{ fontSize: 10, color: "var(--wt-text-dim)" }}>{formatTimeAgo(a.detectedAt)}</span>
                 </div>
               ))

@@ -17,12 +17,12 @@ function ThemeToggle() {
         alignItems: "center",
         gap: 6,
         background: "transparent",
-        border: `1px solid ${isDark ? "#2A4060" : "#BDCADA"}`,
+        border: `1px solid var(--wt-toggle-border)`,
         borderRadius: 4,
         cursor: "pointer",
         padding: "3px 8px",
         transition: "all 0.15s",
-        color: isDark ? "#4A6080" : "#5B6F87",
+        color: "var(--wt-text-muted)",
       }}
     >
       {isDark ? (
@@ -50,9 +50,6 @@ function ThemeToggle() {
 }
 
 export function Topbar() {
-  const { theme } = useTheme();
-  const isDark = theme === "dark";
-
   const [nodeStatus, setNodeStatus] = useState<"connected" | "disconnected">("disconnected");
 
   const { data: status } = useGetNodeStatus({
@@ -65,20 +62,20 @@ export function Topbar() {
     }
   }, [status]);
 
-  const bg = isDark ? "#0D1320" : "#EBF0F7";
-  const borderColor = isDark ? "#1E2D40" : "#BDCADA";
-  const mutedColor = isDark ? "#4A5568" : "#7A8FA6";
+  const bg = "var(--wt-topbar-bg)";
+  const borderColor = "var(--wt-border)";
+  const mutedColor = "var(--wt-status-muted)";
 
   return (
     <div style={{ background: bg, borderBottom: `1px solid ${borderColor}`, padding: "0 24px", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, transition: "background 0.2s, border-color 0.2s" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 20, height: 20, background: "#F7931A", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#000" }}>₿</div>
-        <span style={{ color: "#F7931A", fontWeight: 700, fontSize: 13, letterSpacing: "0.12em", textTransform: "uppercase" }}>The Watchtower</span>
+        <div style={{ width: 20, height: 20, background: "var(--wt-brand)", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#000" }}>₿</div>
+        <span style={{ color: "var(--wt-brand)", fontWeight: 700, fontSize: 13, letterSpacing: "0.12em", textTransform: "uppercase" }}>The Watchtower</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ width: 7, height: 7, borderRadius: "50%", background: nodeStatus === "connected" ? "#22C55E" : "#EF4444", boxShadow: nodeStatus === "connected" ? "0 0 6px #22C55E88" : "0 0 6px #EF444488" }} />
-          <span style={{ fontSize: 11, color: nodeStatus === "connected" ? "#22C55E" : "#EF4444", letterSpacing: "0.08em" }}>
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: nodeStatus === "connected" ? "var(--wt-status-ok)" : "var(--wt-status-error)", boxShadow: nodeStatus === "connected" ? "0 0 6px color-mix(in srgb, var(--wt-status-ok) 53%, transparent)" : "0 0 6px color-mix(in srgb, var(--wt-status-error) 53%, transparent)" }} />
+          <span style={{ fontSize: 11, color: nodeStatus === "connected" ? "var(--wt-status-ok)" : "var(--wt-status-error)", letterSpacing: "0.08em" }}>
             {nodeStatus === "connected" ? "NODE CONNECTED" : "NODE OFFLINE"}
           </span>
         </div>
@@ -94,14 +91,12 @@ export function Topbar() {
 
 export function Sidebar() {
   const [location] = useLocation();
-  const { theme } = useTheme();
-  const isDark = theme === "dark";
 
-  const bg = isDark ? "#0D1320" : "#E3EAF2";
-  const borderColor = isDark ? "#1E2D40" : "#BDCADA";
-  const activeBg = isDark ? "#142030" : "#D4DEF0";
-  const inactiveColor = isDark ? "#4A6080" : "#7A8FA6";
-  const versionColor = isDark ? "#2A4060" : "#9AAFC7";
+  const bg = "var(--wt-sidebar-bg)";
+  const borderColor = "var(--wt-border)";
+  const activeBg = "var(--wt-nav-active-bg)";
+  const inactiveColor = "var(--wt-nav-inactive)";
+  const versionColor = "var(--wt-text-dim)";
 
   const links = [
     { href: "/", label: "⬡ Dashboard" },
@@ -119,8 +114,8 @@ export function Sidebar() {
             <div
               style={{
                 background: isActive ? activeBg : "transparent",
-                borderLeft: `3px solid ${isActive ? "#F7931A" : "transparent"}`,
-                color: isActive ? "#F7931A" : inactiveColor,
+                borderLeft: `3px solid ${isActive ? "var(--wt-brand)" : "transparent"}`,
+                color: isActive ? "var(--wt-brand)" : inactiveColor,
                 padding: "10px 20px",
                 fontSize: 11,
                 textAlign: "left",

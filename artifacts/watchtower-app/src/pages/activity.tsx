@@ -22,7 +22,7 @@ export default function Activity() {
             <button 
               key={f} 
               onClick={() => setFilter(f as any)}
-              style={{ background: filter === f ? "#F7931A22" : "transparent", border: `1px solid ${filter === f ? "#F7931A" : "var(--wt-border)"}`, color: filter === f ? "#F7931A" : "var(--wt-text-muted)", fontFamily: "inherit", fontSize: 10, padding: "4px 10px", borderRadius: 3, cursor: "pointer", letterSpacing: "0.08em" }}
+              style={{ background: filter === f ? "color-mix(in srgb, var(--wt-brand) 13%, transparent)" : "transparent", border: `1px solid ${filter === f ? "var(--wt-brand)" : "var(--wt-border)"}`, color: filter === f ? "var(--wt-brand)" : "var(--wt-text-muted)", fontFamily: "inherit", fontSize: 10, padding: "4px 10px", borderRadius: 3, cursor: "pointer", letterSpacing: "0.08em" }}
             >
               {f}
             </button>
@@ -38,26 +38,26 @@ export default function Activity() {
         {events.map(a => (
           <div key={a.id} style={{ background: "var(--wt-card-bg)", border: `1px solid ${a.direction === "incoming" ? "#14532D33" : "#7F1D1D33"}`, borderRadius: 6, padding: "14px 16px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: a.direction === "incoming" ? "#22C55E" : "#F87171", padding: "2px 8px", border: `1px solid ${a.direction === "incoming" ? "#22C55E44" : "#F8717144"}`, borderRadius: 3, letterSpacing: "0.1em" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: a.direction === "incoming" ? "var(--wt-status-ok)" : "var(--wt-status-out)", padding: "2px 8px", border: `1px solid ${a.direction === "incoming" ? "color-mix(in srgb, var(--wt-status-ok) 27%, transparent)" : "color-mix(in srgb, var(--wt-status-out) 27%, transparent)"}`, borderRadius: 3, letterSpacing: "0.1em" }}>
                 {a.direction === "incoming" ? "▲ IN" : "▼ OUT"}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ fontSize: 12, color: "var(--wt-text)" }}>{a.addressLabel || truncateAddress(a.address)}</span>
                 {a.addressLabel && <span style={{ fontSize: 10, color: "var(--wt-text-dim)", marginLeft: 8 }}>{truncateAddress(a.address)}</span>}
               </div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: a.direction === "incoming" ? "#22C55E" : "#F87171" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: a.direction === "incoming" ? "var(--wt-status-ok)" : "var(--wt-status-out)" }}>
                 {a.direction === "incoming" ? "+" : "−"}{formatBtc(a.amountSats)}
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 10, flexWrap: "wrap" }}>
               <span style={{ color: "var(--wt-text-dim)" }}>TXID:</span>
               <span style={{ color: "var(--wt-text-muted)", fontFamily: "inherit" }}>{a.txid}</span>
-              <span style={{ marginLeft: "auto", color: a.status === "mempool" ? "#FBBF24" : "#22C55E", padding: "2px 6px", border: `1px solid ${a.status === "mempool" ? "#FBBF2444" : "#22C55E44"}`, borderRadius: 3, letterSpacing: "0.08em" }}>
+              <span style={{ marginLeft: "auto", color: a.status === "mempool" ? "var(--wt-status-warning)" : "var(--wt-status-ok)", padding: "2px 6px", border: `1px solid ${a.status === "mempool" ? "color-mix(in srgb, var(--wt-status-warning) 27%, transparent)" : "color-mix(in srgb, var(--wt-status-ok) 27%, transparent)"}`, borderRadius: 3, letterSpacing: "0.08em" }}>
                 {a.status === "mempool" ? "⏳ MEMPOOL" : "✓ CONFIRMED"}
               </span>
               <span style={{ color: "var(--wt-text-dim)" }}>{formatTimeAgo(a.detectedAt)}</span>
               {(a.mempoolAlertedAt || a.confirmedAlertedAt) && (
-                <span style={{ color: "#22C55E", padding: "2px 6px", border: "1px solid #22C55E33", borderRadius: 3 }}>XMPP SENT</span>
+                <span style={{ color: "var(--wt-status-ok)", padding: "2px 6px", border: "1px solid color-mix(in srgb, var(--wt-status-ok) 20%, transparent)", borderRadius: 3 }}>XMPP SENT</span>
               )}
             </div>
           </div>

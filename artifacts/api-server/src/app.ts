@@ -64,6 +64,15 @@ app.use(helmet({
       upgradeInsecureRequests: null,
     },
   },
+  // Disable two helmet defaults that are no-ops over plain HTTP and only
+  // produce console noise on Umbrel (which serves this app without TLS):
+  //  - Cross-Origin-Opener-Policy: browsers IGNORE it on a non-secure origin
+  //    ("untrustworthy origin") and log an error.
+  //  - Origin-Agent-Cluster: triggers a warning when the same origin is loaded
+  //    both with and without the header (site- vs origin-keyed mismatch).
+  // Neither adds security for a same-origin, LAN-only HTTP app.
+  crossOriginOpenerPolicy: false,
+  originAgentCluster: false,
 }));
 
 // CORS — same-origin only in production; allow localhost variants in development
