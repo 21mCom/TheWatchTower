@@ -50,7 +50,6 @@ function stubTlsConnect(): {
   return {
     capturedOptions: () => captured,
     restore: () => {
-      // @ts-expect-error — restoring the original
       tls.connect = original;
     },
   };
@@ -72,7 +71,6 @@ function stubNetConnect(): { restore: () => void } {
 
   return {
     restore: () => {
-      // @ts-expect-error — restoring the original
       net.connect = original;
     },
   };

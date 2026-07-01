@@ -1,1 +1,9 @@
 - [Watchtower stack](watchtower-stack.md) — key decisions for the Watchtower Bitcoin monitor (DB schema, Electrum client, XMPP, Umbrel packaging)
+- [Watchtower schema migrations](watchtower-schema-migrations.md) — prod image runs raw migrate.ts (not drizzle-kit); Drizzle schema & migrate.ts must stay in parity or prod crashes while CI /healthz still passes
+- [Watchtower GitHub publishing](watchtower-github-publishing.md) — repo/registry names; Replit GitHub connector has only `repo` scope (no workflow/packages) so CI-add + GHCR-public are manual
+- [Watchtower reconnect storm](watchtower-reconnect-storm.md) — schedule Electrum reconnects from ONE idempotent path & bind HTTP port before initMonitor, or storm→OOM→port never binds (Umbrel ECONNREFUSED)
+- [Umbrel Electrs connection](watchtower-umbrel-electrs-connection.md) — dependent apps reach Electrs at fixed IP 10.21.21.10:50001 (TLS off), NOT a container hostname like electrs_electrs_1
+- [Watchtower CSP HTTP blank page](watchtower-csp-http-blank-page.md) — helmet keeps default upgrade-insecure-requests; on HTTP-only Umbrel it blanks the app, set directive to null
+- [Umbrel container naming](umbrel-container-naming.md) — bare service names (web/db) collide on shared umbrel_main_network; use full <app-id>_<service>_1 for APP_HOST & DB URLs
+- [Watchtower codegen drift](watchtower-codegen-drift.md) — openapi.yaml is source of truth; settings fields+port bounds now in spec so regen is safe; regen BOTH clients together, don't hand-edit ahead of spec
+- [Future-only baseline](watchtower-future-only-baseline.md) — future-only addresses silence existing history via baselined=true rows; mempool→confirmed upgrade must guard on !baselined

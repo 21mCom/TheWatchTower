@@ -49,6 +49,13 @@ COPY --from=frontend-build /app/artifacts/watchtower-app/dist/public ./public
 # Install a minimal static file server + production deps
 RUN npm install -g serve
 
+# Bundle the Umbrel app-store packaging assets (manifest + gallery images) into
+# the image so the built artifact can be verified after `docker build`. These
+# files make up the app-store submission bundle; keeping the manifest and its
+# gallery image together lets the release check confirm they were actually
+# packaged and are the correct size.
+COPY umbrel/umbrel-app.yml umbrel/1.jpg ./umbrel-store/
+
 # Copy and install production entrypoint
 COPY umbrel/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

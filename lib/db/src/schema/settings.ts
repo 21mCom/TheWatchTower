@@ -18,6 +18,10 @@ export const appSettings = pgTable("app_settings", {
   alertTemplate: text("alert_template").notNull().default(
     "[{direction}] {label}\nAmount: {amount_btc} ({amount_sats} sats)\nAddress: {address}\nTxid: {txid}\nStatus: {status}"
   ),
+  // Global default for newly added addresses: when true, an address only notifies
+  // on transactions that occur after it is added (its pre-existing history is
+  // silently baselined). Overridable per-address at add time.
+  futureOnlyDefault: boolean("future_only_default").notNull().default(true),
 });
 
 export const insertAppSettingsSchema = createInsertSchema(appSettings);

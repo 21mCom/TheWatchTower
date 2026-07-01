@@ -211,6 +211,7 @@ async function seedTestData(): Promise<void> {
       label: "Offline-Add Existing Address",
       address: `offline-add-existing-placeholder-${EXISTING_ADDR_ID}`,
       scripthash: EXISTING_SCRIPTHASH,
+      watchMode: "all",
     })
     .onConflictDoNothing();
 }
@@ -325,6 +326,7 @@ test("address added while node is offline is subscribed and alerted after reconn
       label: "Offline-Add New Address",
       address: `offline-add-new-placeholder-${NEW_ADDR_ID}`,
       scripthash: NEW_SCRIPTHASH,
+      watchMode: "all",
     })
     .onConflictDoNothing();
 

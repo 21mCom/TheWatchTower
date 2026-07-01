@@ -103,6 +103,12 @@ const mockHistoryByScripthash = new Map<string, Array<{ tx_hash: string; height:
 // raw tx for a given txid. Falls back to RAW_TX_HEX for unrecognised txids.
 const mockRawTxByTxid = new Map<string, string>();
 
+// When true, the mock server pushes a blockchain.scripthash.subscribe notification
+// for TEST_SCRIPTHASH the instant it answers the subscribe RPC. This reproduces the
+// subscribe-response vs. push-notification race inside subscribeAllAddresses, where
+// both paths call processScripthashHistory concurrently for the same initial tx.
+let pushNotifyAfterSubscribe = false;
+
 let mockServer!: net.Server;
 let serverPort!: number;
 const activeClientSockets = new Set<net.Socket>();
@@ -126,6 +132,18 @@ function handleRequest(
     case "blockchain.scripthash.subscribe":
       // Return non-null only for our test scripthash; other addresses have no history.
       respond(socket, id, params[0] === TEST_SCRIPTHASH ? "status-hash-loop-v1" : null);
+      // Race reproduction: push a notification for the same scripthash immediately
+      // after the subscribe response so the notification handler fires while the
+      // subscribe-response path is still in flight — both then call
+      // processScripthashHistory concurrently for the same initial tx.
+      if (pushNotifyAfterSubscribe && params[0] === TEST_SCRIPTHASH) {
+        socket.write(
+          JSON.stringify({
+            method: "blockchain.scripthash.subscribe",
+            params: [TEST_SCRIPTHASH, "status-hash-loop-v1"],
+          }) + "\n",
+        );
+      }
       break;
     case "blockchain.scripthash.get_history": {
       const scripthash = (params as string[])[0];
@@ -222,6 +240,7 @@ async function seedTestData(): Promise<void> {
       label: TEST_ADDRESS_LABEL,
       address: `test-placeholder-${TEST_ADDR_ID}`,
       scripthash: TEST_SCRIPTHASH,
+      watchMode: "all",
     })
     .onConflictDoNothing();
 }
@@ -583,9 +602,9 @@ test("processNewTx inserts alert row with amountSats=0 and direction='incoming' 
   mockHistory.push({ tx_hash: DECODE_FAIL_TXID, height: 0 }); // height=0 → mempool
 
   // Patch getTransaction to throw on the first invocation only.
-  const originalGetTx = (client as Record<string, unknown>).getTransaction as (txid: string) => Promise<string>;
+  const originalGetTx = (client as unknown as Record<string, unknown>).getTransaction as (txid: string) => Promise<string>;
   let getTransactionCallCount = 0;
-  (client as Record<string, unknown>).getTransaction = async (txid: string): Promise<string> => {
+  (client as unknown as Record<string, unknown>).getTransaction = async (txid: string): Promise<string> => {
     if (getTransactionCallCount++ === 0) {
       throw new Error("mock getTransaction failure for decode-race test");
     }
@@ -599,7 +618,7 @@ test("processNewTx inserts alert row with amountSats=0 and direction='incoming' 
   } finally {
     // Restore mock history and the original getTransaction implementation
     mockHistory.splice(0, mockHistory.length, ...savedHistory);
-    (client as Record<string, unknown>).getTransaction = originalGetTx;
+    (client as unknown as Record<string, unknown>).getTransaction = originalGetTx;
   }
 
   // ── Assert: exactly one alert_events row was inserted ─────────────────────
@@ -794,6 +813,7 @@ test("two different watched addresses each receiving a transaction in the same b
       label: TEST_ADDRESS_LABEL_2,
       address: `test-placeholder-${TEST_ADDR_ID_2}`,
       scripthash: TEST_SCRIPTHASH_2,
+      watchMode: "all",
     })
     .onConflictDoNothing();
 
@@ -883,5 +903,74 @@ test("two different watched addresses each receiving a transaction in the same b
     `Expected _getAlertSendAttempts() === 2 after processing one confirmed tx per address ` +
       `(two addresses total), but got ${sendCount}. An alert for one of the addresses ` +
       `may have been silently skipped or incorrectly duplicated.`,
+  );
+});
+
+test("push notification racing the subscribe response for the same scripthash produces exactly one alert row and one send", async () => {
+  // Start from a clean slate so both racing paths see the txid as new — this is
+  // the window where each concurrent call runs SELECT → find-nothing → INSERT.
+  await db
+    .delete(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)));
+
+  // Reset the counter so only the two racing processScripthashHistory calls below
+  // are counted. sendTransactionAlert increments _alertSendAttempts at its very
+  // first line, before any XMPP check, so the count is reliable even when XMPP is
+  // not configured in the test environment.
+  _resetAlertSendAttempts();
+
+  // Arm the mock server to push a scripthash notification for TEST_SCRIPTHASH the
+  // instant it answers the subscribe RPC. This recreates the real timing window in
+  // subscribeAllAddresses: the subscribe-response path calls processScripthashHistory
+  // while the notification handler (fired by the pushed notification) calls it too —
+  // two concurrent calls for the same initial tx.
+  //
+  // Deduplication is guaranteed by two cooperating mechanisms inside processNewTx:
+  //   1. The unique index  alert_events_address_id_txid_idx  on (address_id, txid).
+  //   2. .onConflictDoNothing().returning() — the INSERT that loses the race returns [],
+  //      so processNewTx returns early without calling sendTransactionAlert.
+  pushNotifyAfterSubscribe = true;
+  try {
+    // A genuine fresh connect is required: the "connected" handler runs
+    // subscribeAllAddresses (the subscribe-response path), whereas a reconnect only
+    // runs catchUpAllAddresses. Destroy then re-init to get a clean "connected" event.
+    destroyMonitor();
+    await initMonitor();
+
+    const connected = await waitUntilConnected();
+    assert.ok(connected, "Monitor should connect to the mock server within 4 s");
+
+    // Let both the subscribe-response and notification-triggered
+    // processScripthashHistory calls fully settle.
+    await sleep(500);
+  } finally {
+    pushNotifyAfterSubscribe = false;
+  }
+
+  // ── Assert: exactly one alert_events row ─────────────────────────────────────
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(alertEvents)
+    .where(and(eq(alertEvents.addressId, TEST_ADDR_ID), eq(alertEvents.txid, TEST_TXID)));
+
+  assert.equal(
+    n,
+    1,
+    `Expected exactly 1 alert_events row when a push notification races the subscribe ` +
+      `response for the same scripthash, but found ${n}. The unique index ` +
+      `(alert_events_address_id_txid_idx) or onConflictDoNothing() guard in processNewTx ` +
+      `may not be active.`,
+  );
+
+  // ── Assert: exactly one alert send attempt ───────────────────────────────────
+  const alertSendCount = _getAlertSendAttempts();
+  assert.equal(
+    alertSendCount,
+    1,
+    `Expected exactly 1 alert send attempt when the subscribe response and a push ` +
+      `notification race for the same initial tx, but sendTransactionAlert was called ` +
+      `${alertSendCount} time(s). The onConflictDoNothing().returning() guard in ` +
+      `processNewTx may not be stopping the losing concurrent INSERT from sending a ` +
+      `duplicate alert.`,
   );
 });

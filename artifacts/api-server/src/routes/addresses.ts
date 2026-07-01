@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { db } from "@workspace/db";
-import { watchedAddresses } from "@workspace/db";
+import { watchedAddresses, appSettings } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   CreateAddressBody,
@@ -29,7 +29,7 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  const { label, address } = parsed.data;
+  const { label, address, watchMode } = parsed.data;
 
   if (!validateBitcoinAddress(address)) {
     res.status(400).json({ error: "Invalid Bitcoin address" });
@@ -47,12 +47,22 @@ router.post("/", async (req, res) => {
     return;
   }
 
+  // Resolve the effective watch mode: use the per-address override when provided,
+  // otherwise fall back to the global default (future-only when true).
+  let effectiveWatchMode: "future" | "all";
+  if (watchMode === "future" || watchMode === "all") {
+    effectiveWatchMode = watchMode;
+  } else {
+    const [settings] = await db.select().from(appSettings).limit(1);
+    effectiveWatchMode = settings?.futureOnlyDefault === false ? "all" : "future";
+  }
+
   const scripthash = addressToScripthash(address);
   const id = crypto.randomUUID();
 
   const [created] = await db
     .insert(watchedAddresses)
-    .values({ id, label, address, scripthash })
+    .values({ id, label, address, scripthash, watchMode: effectiveWatchMode })
     .returning();
 
   // Subscribe in background
@@ -120,6 +130,10 @@ router.put("/:id", async (req, res) => {
   if (address && address !== old.address) {
     updates.address = address;
     updates.scripthash = scripthash;
+    // A different Bitcoin address is effectively a new watch target — reset the
+    // baseline flag so the new address is baselined per its watch mode (and its
+    // history is not spammed when future-only) on the next catch-up.
+    updates.baselineApplied = false;
   }
 
   const [updated] = await db

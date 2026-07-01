@@ -57,8 +57,9 @@ async function loadSettingsAndConnect() {
     return;
   }
 
-  // Setup XMPP
-  if (settings.xmppJid && settings.xmppPassword && settings.xmppServer && settings.recipientJid) {
+  // Setup XMPP. The server host is optional — when blank the endpoint is
+  // discovered via SRV from the JID's domain, so it is not required here.
+  if (settings.xmppJid && settings.xmppPassword && settings.recipientJid) {
     xmpp.configure({
       server: settings.xmppServer,
       port: settings.xmppPort,
@@ -67,8 +68,9 @@ async function loadSettingsAndConnect() {
       tls: settings.xmppTls,
       recipientJid: settings.recipientJid,
     });
+    // A failed initial connect records the reason and auto-retries on its own.
     xmpp.connect().catch((err) => {
-      logger.warn({ err }, "[monitor] XMPP connect failed");
+      logger.warn({ err: (err as Error).message }, "[monitor] XMPP connect failed — will retry");
     });
   }
 
@@ -195,8 +197,12 @@ async function subscribeAllAddresses(client: ElectrumClient) {
   for (const addr of addresses) {
     try {
       const status = await client.subscribeScripthash(addr.scripthash);
-      // Non-null status means there's history — fetch and process immediately
-      if (status !== null) {
+      // Non-null status means there's history — fetch and process immediately.
+      // Also process when a future-only address still needs its (possibly empty)
+      // baseline recorded, so the first genuinely new transaction alerts normally
+      // even for an address that had no history when it was added.
+      const needsBaseline = addr.watchMode === "future" && !addr.baselineApplied;
+      if (status !== null || needsBaseline) {
         await processScripthashHistory(addr.scripthash, client);
       }
     } catch (err) {
@@ -246,6 +252,24 @@ export async function processScripthashHistory(scripthash: string, client: Elect
     return;
   }
 
+  // Future-only baseline: on the first catch-up for a future-only address, record
+  // all currently-present history as "already seen" without notifying, then mark
+  // the baseline as applied. This runs on whichever pass (add-time, startup,
+  // reconnect) processes the address first. Idempotent: the baseline rows use the
+  // (address_id, txid) unique index, and re-running simply re-marks the flag.
+  if (watched.watchMode === "future" && !watched.baselineApplied) {
+    await applyBaseline(watched.id, history);
+    await db
+      .update(watchedAddresses)
+      .set({ baselineApplied: true })
+      .where(eq(watchedAddresses.id, watched.id));
+    logger.info(
+      { address: watched.address, count: history.length },
+      "[monitor] Future-only baseline applied — existing history recorded silently",
+    );
+    return;
+  }
+
   for (const entry of history) {
     const { tx_hash: txid, height } = entry;
     // height <= 0 means mempool/unconfirmed; positive height means mined
@@ -267,10 +291,13 @@ export async function processScripthashHistory(scripthash: string, client: Elect
     } else {
       const evt = existing[0]!;
       // Upgrade mempool → confirmed only when the threshold is reached.
+      // Skip baselined entries entirely: a transaction that was already in the
+      // mempool when a future-only address was added is history — it must never
+      // fire a "confirmed" alert when it later confirms.
       // Guard against concurrent calls racing on the same tx: add status='mempool'
       // to the WHERE clause so the UPDATE is a no-op if another call already won.
       // .returning() lets us check the affected-row count without a second SELECT.
-      if (evt.status === "mempool" && meetsThreshold) {
+      if (evt.status === "mempool" && meetsThreshold && !evt.baselined) {
         const upgraded = await db
           .update(alertEvents)
           .set({ status: "confirmed", blockHeight: height, confirmedAlertedAt: new Date() })
@@ -297,6 +324,34 @@ export async function processScripthashHistory(scripthash: string, client: Elect
       }
     }
   }
+}
+
+/**
+ * Silently record an address's existing history as "already seen" for the
+ * future-only baseline. These rows are flagged baselined=true so they never fire
+ * an alert (now or when a baselined mempool entry later confirms). We deliberately
+ * skip transaction decoding here — baselined rows carry no direction/amount and are
+ * excluded from the activity feed — so baselining a high-volume address is cheap.
+ * onConflictDoNothing keeps this idempotent under concurrent/reconnect calls.
+ */
+async function applyBaseline(
+  addressId: string,
+  history: { tx_hash: string; height: number }[],
+) {
+  if (history.length === 0) return;
+
+  const rows = history.map((h) => ({
+    id: crypto.randomUUID(),
+    addressId,
+    txid: h.tx_hash,
+    direction: "incoming" as const,
+    amountSats: 0,
+    status: isUnconfirmed(h.height) ? ("mempool" as const) : ("confirmed" as const),
+    blockHeight: !isUnconfirmed(h.height) ? h.height : null,
+    baselined: true,
+  }));
+
+  await db.insert(alertEvents).values(rows).onConflictDoNothing();
 }
 
 /**
@@ -433,8 +488,15 @@ async function sendTransactionAlert(
 export async function subscribeAddress(scripthash: string) {
   if (!electrum || !electrum.connected) return;
   const status = await electrum.subscribeScripthash(scripthash);
-  // Catch up on any existing history for this newly-added address
-  if (status !== null && electrum) {
+  // Catch up on any existing history for this newly-added address. Also process
+  // when a future-only address still needs its (possibly empty) baseline recorded,
+  // so its first genuinely new transaction alerts even if it had no history at add.
+  const [watched] = await db
+    .select()
+    .from(watchedAddresses)
+    .where(eq(watchedAddresses.scripthash, scripthash));
+  const needsBaseline = watched?.watchMode === "future" && !watched.baselineApplied;
+  if ((status !== null || needsBaseline) && electrum) {
     await processScripthashHistory(scripthash, electrum);
   }
 }

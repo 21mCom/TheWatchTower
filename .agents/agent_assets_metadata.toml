@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "6r9Yow5K0Arv9HB2PSU-P"
+uri = "file://attached_assets/image_1782875253776.png"
+type = "image"
+title = "DNS Tester screenshot you attached — sov.me"

@@ -22,6 +22,7 @@ export class ElectrumClient extends EventEmitter {
   private subscriptions = new Set<string>();
   private notificationHandler: ScripthashNotificationHandler | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private rpcTimeouts = new Set<ReturnType<typeof setTimeout>>();
   private _connected = false;
   private _blockHeight: number | null = null;
   private destroyed = false;
@@ -233,16 +234,24 @@ export class ElectrumClient extends EventEmitter {
       this.socket.write(msg);
     });
 
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => {
+    let timeoutHandle: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        this.rpcTimeouts.delete(timeoutHandle);
         if (requestId !== null) {
           this.pending.delete(requestId);
         }
         reject(new Error(`Electrum RPC timed out after ${timeoutMs}ms: ${method}`));
-      }, timeoutMs),
-    );
+      }, timeoutMs);
+      this.rpcTimeouts.add(timeoutHandle);
+    });
 
-    return Promise.race([call, timeout]);
+    // Clear the timeout as soon as the call settles (either way) so the timer
+    // does not keep the Node.js event loop — and therefore the process — alive.
+    return Promise.race([call, timeout]).finally(() => {
+      clearTimeout(timeoutHandle);
+      this.rpcTimeouts.delete(timeoutHandle);
+    });
   }
 
   setNotificationHandler(handler: ScripthashNotificationHandler) {
@@ -299,12 +308,23 @@ export class ElectrumClient extends EventEmitter {
     return this.pending.size;
   }
 
+  /** Number of outstanding RPC timeout timers not yet cleared. Exposed for testing. */
+  get rpcTimeoutCount(): number {
+    return this.rpcTimeouts.size;
+  }
+
   destroy() {
     this.destroyed = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    // Clear any outstanding RPC timeout timers so they cannot keep the Node.js
+    // process alive or fire a "reject on settled promise" after teardown.
+    for (const handle of this.rpcTimeouts) {
+      clearTimeout(handle);
+    }
+    this.rpcTimeouts.clear();
     for (const req of this.pending.values()) {
       req.reject(new Error("Client destroyed"));
     }

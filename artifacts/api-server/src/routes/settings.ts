@@ -38,8 +38,9 @@ router.get("/", async (_req, res) => {
     xmppJid: s.xmppJid,
     xmppTls: s.xmppTls,
     recipientJid: s.recipientJid,
-    xmppConfigured: !!(s.xmppJid && s.xmppPassword && s.xmppServer && s.recipientJid),
+    xmppConfigured: !!(s.xmppJid && s.xmppPassword && s.recipientJid),
     alertTemplate: s.alertTemplate,
+    futureOnlyDefault: s.futureOnlyDefault,
   });
 });
 
@@ -67,6 +68,7 @@ router.put("/", settingsWriteLimiter, async (req, res) => {
   if (data.xmppTls !== undefined) updates.xmppTls = data.xmppTls;
   if (data.recipientJid !== undefined) updates.recipientJid = data.recipientJid;
   if (data.alertTemplate !== undefined) updates.alertTemplate = data.alertTemplate;
+  if (data.futureOnlyDefault !== undefined) updates.futureOnlyDefault = data.futureOnlyDefault;
 
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: "No fields to update were provided." });
@@ -93,8 +95,20 @@ router.put("/", settingsWriteLimiter, async (req, res) => {
     xmppJid: s.xmppJid,
     xmppTls: s.xmppTls,
     recipientJid: s.recipientJid,
-    xmppConfigured: !!(s.xmppJid && s.xmppPassword && s.xmppServer && s.recipientJid),
+    xmppConfigured: !!(s.xmppJid && s.xmppPassword && s.recipientJid),
     alertTemplate: s.alertTemplate,
+    futureOnlyDefault: s.futureOnlyDefault,
+  });
+});
+
+// GET /settings/xmpp-status
+router.get("/xmpp-status", (_req, res) => {
+  const xmpp = getXmpp();
+  const lastError = xmpp.getLastError();
+  res.json({
+    connected: xmpp.isConnected(),
+    configured: xmpp.isConfigured(),
+    error: lastError ? { kind: lastError.kind, message: lastError.message } : null,
   });
 });
 
@@ -102,18 +116,18 @@ router.put("/", settingsWriteLimiter, async (req, res) => {
 router.post("/test-alert", settingsWriteLimiter, async (_req, res) => {
   const xmpp = getXmpp();
   if (!xmpp.isConfigured()) {
-    res.json({ success: false, message: "XMPP is not configured. Please set server, JID, password, and recipient." });
-    return;
-  }
-  if (!xmpp.isConnected()) {
-    res.json({ success: false, message: "XMPP is configured but not connected. Check credentials and server." });
+    res.json({ success: false, message: "XMPP is not configured. Please set the JID, password, and recipient." });
     return;
   }
   try {
+    // Ensure a live connection first so we can report the specific reason it
+    // failed (auth, host not found, TLS, timeout, …) rather than a generic
+    // "not connected" message.
+    await xmpp.ensureConnected();
     await xmpp.sendAlert("🗼 Watchtower test alert — your notifications are working correctly.");
     res.json({ success: true, message: "Test alert sent successfully." });
   } catch (err) {
-    res.json({ success: false, message: `Failed to send: ${(err as Error).message}` });
+    res.json({ success: false, message: `Failed to send test alert: ${(err as Error).message}` });
   }
 });
 

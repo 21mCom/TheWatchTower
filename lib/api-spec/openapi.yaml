@@ -176,6 +176,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/TestAlertResult"
 
+  /settings/xmpp-status:
+    get:
+      operationId: getXmppStatus
+      tags: [settings]
+      summary: Get current XMPP notification connection status
+      responses:
+        "200":
+          description: XMPP status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/XmppStatus"
+
   /node-status:
     get:
       operationId: getNodeStatus
@@ -241,6 +254,11 @@ components:
           type: string
         scripthash:
           type: string
+        watchMode:
+          type: string
+          enum:
+            - future
+            - all
         createdAt:
           type: string
           format: date-time
@@ -249,6 +267,7 @@ components:
         - label
         - address
         - scripthash
+        - watchMode
         - createdAt
 
     WatchedAddressCreate:
@@ -261,6 +280,11 @@ components:
         address:
           type: string
           minLength: 1
+        watchMode:
+          type: string
+          enum:
+            - future
+            - all
       required:
         - label
         - address
@@ -286,7 +310,11 @@ components:
           type: string
         electrumPort:
           type: integer
+          minimum: 1
+          maximum: 65535
         electrumTls:
+          type: boolean
+        electrumAllowSelfSigned:
           type: boolean
         confirmationThreshold:
           type: integer
@@ -294,6 +322,8 @@ components:
           type: string
         xmppPort:
           type: integer
+          minimum: 1
+          maximum: 65535
         xmppJid:
           type: string
         xmppTls:
@@ -302,10 +332,15 @@ components:
           type: string
         xmppConfigured:
           type: boolean
+        alertTemplate:
+          type: string
+        futureOnlyDefault:
+          type: boolean
       required:
         - electrumHost
         - electrumPort
         - electrumTls
+        - electrumAllowSelfSigned
         - confirmationThreshold
         - xmppServer
         - xmppPort
@@ -313,6 +348,8 @@ components:
         - xmppTls
         - recipientJid
         - xmppConfigured
+        - alertTemplate
+        - futureOnlyDefault
 
     AppSettingsUpdate:
       type: object
@@ -321,7 +358,11 @@ components:
           type: string
         electrumPort:
           type: integer
+          minimum: 1
+          maximum: 65535
         electrumTls:
+          type: boolean
+        electrumAllowSelfSigned:
           type: boolean
         confirmationThreshold:
           type: integer
@@ -329,6 +370,8 @@ components:
           type: string
         xmppPort:
           type: integer
+          minimum: 1
+          maximum: 65535
         xmppJid:
           type: string
         xmppPassword:
@@ -337,6 +380,10 @@ components:
           type: boolean
         recipientJid:
           type: string
+        alertTemplate:
+          type: string
+        futureOnlyDefault:
+          type: boolean
 
     NodeStatus:
       type: object
@@ -355,6 +402,33 @@ components:
           nullable: true
       required:
         - connected
+
+    XmppStatusError:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [auth, host-not-found, tls, timeout, other]
+        message:
+          type: string
+      required:
+        - kind
+        - message
+
+    XmppStatus:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        configured:
+          type: boolean
+        error:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/XmppStatusError"
+      required:
+        - connected
+        - configured
 
     AlertEvent:
       type: object

@@ -111,6 +111,47 @@ describe("PgRateLimitStore restart persistence", { skip: !DB_URL }, () => {
     }
   });
 
+  test("cleanupExpired deletes only rows whose reset_time is in the past", async () => {
+    const LIVE_KEY = `${TEST_KEY}-cleanup-live`;
+    const DEAD_KEY = `${TEST_KEY}-cleanup-dead`;
+    const store = new PgRateLimitStore(DB_URL!);
+    store.init({ windowMs: 60_000 } as Parameters<PgRateLimitStore["init"]>[0]);
+    const tempPool = new pg.Pool({ connectionString: DB_URL });
+
+    try {
+      // A live window (reset_time in the future) and a dead one (in the past)
+      await store.increment(LIVE_KEY);
+      await store.increment(DEAD_KEY);
+      await tempPool.query(
+        `UPDATE rate_limit_windows SET reset_time = NOW() - interval '1 second' WHERE key = $1`,
+        [DEAD_KEY],
+      );
+
+      const deleted = await store.cleanupExpired();
+      assert.ok(
+        deleted >= 1,
+        `cleanupExpired should report at least the 1 dead row deleted, got ${deleted}`,
+      );
+
+      const live = await tempPool.query(
+        `SELECT 1 FROM rate_limit_windows WHERE key = $1`,
+        [LIVE_KEY],
+      );
+      assert.equal(live.rowCount, 1, "live window must survive cleanup");
+
+      const dead = await tempPool.query(
+        `SELECT 1 FROM rate_limit_windows WHERE key = $1`,
+        [DEAD_KEY],
+      );
+      assert.equal(dead.rowCount, 0, "expired window must be deleted by cleanup");
+    } finally {
+      await store.resetKey(LIVE_KEY);
+      await store.resetKey(DEAD_KEY);
+      await tempPool.end();
+      await store.shutdown();
+    }
+  });
+
   test("an expired window is reset to 1 on the next increment", async () => {
     const EXPIRED_KEY = `${TEST_KEY}-expired`;
     const storeE = new PgRateLimitStore(DB_URL!);

@@ -5,11 +5,13 @@
  * The Watchtower — Bitcoin address monitoring API
  * OpenAPI spec version: 0.2.0
  */
+import type { WatchedAddressWatchMode } from './watchedAddressWatchMode';
 
 export interface WatchedAddress {
   id: string;
   label: string;
   address: string;
   scripthash: string;
+  watchMode: WatchedAddressWatchMode;
   createdAt: Date;
 }

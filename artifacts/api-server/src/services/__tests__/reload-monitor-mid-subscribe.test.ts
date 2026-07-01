@@ -241,6 +241,7 @@ async function seedTestData(): Promise<void> {
         label: f.label,
         address: f.address,
         scripthash: f.scripthash,
+        watchMode: "all",
       })
       .onConflictDoNothing();
   }

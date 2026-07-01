@@ -107,7 +107,7 @@ app.use(express.urlencoded({ extended: true, limit: "64kb" }));
 //   would otherwise grant every IP a fresh window on each crash).
 // - In tests / environments without Postgres: default MemoryStore so the test
 //   suite stays self-contained with no leftover counts across runs.
-const rateLimitStore =
+export const rateLimitStore =
   process.env.DATABASE_URL && process.env.NODE_ENV !== "test"
     ? new PgRateLimitStore(process.env.DATABASE_URL)
     : undefined;

@@ -8,15 +8,24 @@
 
 export interface AppSettingsUpdate {
   electrumHost?: string;
+  /**
+     * @minimum 1
+     * @maximum 65535
+     */
   electrumPort?: number;
   electrumTls?: boolean;
   electrumAllowSelfSigned?: boolean;
   confirmationThreshold?: number;
   xmppServer?: string;
+  /**
+     * @minimum 1
+     * @maximum 65535
+     */
   xmppPort?: number;
   xmppJid?: string;
   xmppPassword?: string;
   xmppTls?: boolean;
   recipientJid?: string;
   alertTemplate?: string;
+  futureOnlyDefault?: boolean;
 }

@@ -98,3 +98,19 @@ test("PUT / with xmppPort below 1 returns 400", async () => {
     "400 response should include an error message",
   );
 });
+
+test("PUT / with a non-integer electrumPort returns 400", async () => {
+  const res = await fetch(`${baseUrl}/`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ electrumPort: 50.5 }),
+  });
+
+  assert.equal(res.status, 400, `Expected 400 but got ${res.status}`);
+
+  const body = await res.json() as { error?: string };
+  assert.ok(
+    typeof body.error === "string" && body.error.length > 0,
+    "400 response should include an error message",
+  );
+});

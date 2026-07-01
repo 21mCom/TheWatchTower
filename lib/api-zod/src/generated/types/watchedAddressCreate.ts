@@ -5,6 +5,7 @@
  * The Watchtower — Bitcoin address monitoring API
  * OpenAPI spec version: 0.2.0
  */
+import type { WatchedAddressCreateWatchMode } from './watchedAddressCreateWatchMode';
 
 export interface WatchedAddressCreate {
   /**
@@ -14,4 +15,5 @@ export interface WatchedAddressCreate {
   label: string;
   /** @minLength 1 */
   address: string;
+  watchMode?: WatchedAddressCreateWatchMode;
 }

@@ -19,4 +19,6 @@ export * from './nodeStatus';
 export * from './testAlertResult';
 export * from './watchedAddress';
 export * from './watchedAddressCreate';
+export * from './watchedAddressCreateWatchMode';
 export * from './watchedAddressUpdate';
+export * from './watchedAddressWatchMode';

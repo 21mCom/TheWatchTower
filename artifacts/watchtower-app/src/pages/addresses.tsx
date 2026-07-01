@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useListAddresses, useCreateAddress, useUpdateAddress, useDeleteAddress, getListAddressesQueryKey } from "@workspace/api-client-react";
+import { useState, useEffect } from "react";
+import { useListAddresses, useCreateAddress, useUpdateAddress, useDeleteAddress, useGetSettings, getListAddressesQueryKey } from "@workspace/api-client-react";
 import { formatTimeAgo } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -34,9 +34,20 @@ export default function Addresses() {
   const [address, setAddress] = useState("");
   const [bulkText, setBulkText] = useState("");
   const [bulkProgress, setBulkProgress] = useState<string | null>(null);
+  const [watchMode, setWatchMode] = useState<"future" | "all">("future");
 
   const { data: addresses, isLoading } = useListAddresses();
   const addressesData = addresses || [];
+
+  const { data: settings } = useGetSettings();
+
+  // Initialise the per-address choice from the global default each time the add
+  // form is opened, so it reflects the current setting but can be overridden.
+  useEffect(() => {
+    if (settings && addOpen) {
+      setWatchMode(settings.futureOnlyDefault ? "future" : "all");
+    }
+  }, [settings, addOpen]);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -58,7 +69,7 @@ export default function Addresses() {
   const handleWatch = async () => {
     if (!label || !address) return;
     try {
-      await createAddress.mutateAsync({ data: { label, address } });
+      await createAddress.mutateAsync({ data: { label, address, watchMode } });
       queryClient.invalidateQueries({ queryKey: getListAddressesQueryKey() });
       resetForm();
       toast({ title: "Address added" });
@@ -78,7 +89,7 @@ export default function Addresses() {
       const addr = parsedBulk[i]!;
       setBulkProgress(`Adding ${i + 1} of ${parsedBulk.length}…`);
       try {
-        await createAddress.mutateAsync({ data: { label, address: addr } });
+        await createAddress.mutateAsync({ data: { label, address: addr, watchMode } });
         added++;
       } catch (err: any) {
         const msg: string = err?.message ?? "";
@@ -222,6 +233,44 @@ export default function Addresses() {
                 )}
               </div>
             )}
+
+            {/* Watch mode override */}
+            <div>
+              <div style={{ fontSize: 10, color: "var(--wt-text-dim)", letterSpacing: "0.08em", marginBottom: 4 }}>
+                MONITORING MODE
+              </div>
+              <div style={{ display: "flex", gap: 0, border: "1px solid var(--wt-border)", borderRadius: 4, overflow: "hidden", width: "fit-content" }}>
+                {([
+                  { value: "future" as const, label: "Future only" },
+                  { value: "all" as const, label: "Import full history" },
+                ]).map((opt, idx) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setWatchMode(opt.value)}
+                    disabled={isBusy}
+                    style={{
+                      background: watchMode === opt.value ? "color-mix(in srgb, var(--wt-brand) 13%, transparent)" : "transparent",
+                      border: "none",
+                      borderRight: idx === 0 ? "1px solid var(--wt-border)" : "none",
+                      color: watchMode === opt.value ? "var(--wt-brand)" : "var(--wt-text-muted)",
+                      fontFamily: "inherit",
+                      fontSize: 10,
+                      padding: "5px 12px",
+                      cursor: "pointer",
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--wt-text-dim)", lineHeight: 1.5, marginTop: 6 }}>
+                {watchMode === "future"
+                  ? "Existing history is recorded silently — you'll only be alerted on transactions from now on."
+                  : "Every past transaction will be imported and alerted on."}
+              </div>
+            </div>
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
               <button

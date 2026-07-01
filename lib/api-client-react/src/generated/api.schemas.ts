@@ -9,13 +9,30 @@ export interface HealthStatus {
   status: string;
 }
 
+export type WatchedAddressWatchMode = typeof WatchedAddressWatchMode[keyof typeof WatchedAddressWatchMode];
+
+
+export const WatchedAddressWatchMode = {
+  future: 'future',
+  all: 'all',
+} as const;
+
 export interface WatchedAddress {
   id: string;
   label: string;
   address: string;
   scripthash: string;
+  watchMode: WatchedAddressWatchMode;
   createdAt: string;
 }
+
+export type WatchedAddressCreateWatchMode = typeof WatchedAddressCreateWatchMode[keyof typeof WatchedAddressCreateWatchMode];
+
+
+export const WatchedAddressCreateWatchMode = {
+  future: 'future',
+  all: 'all',
+} as const;
 
 export interface WatchedAddressCreate {
   /**
@@ -25,6 +42,7 @@ export interface WatchedAddressCreate {
   label: string;
   /** @minLength 1 */
   address: string;
+  watchMode?: WatchedAddressCreateWatchMode;
 }
 
 export interface WatchedAddressUpdate {
@@ -39,30 +57,50 @@ export interface WatchedAddressUpdate {
 
 export interface AppSettings {
   electrumHost: string;
+  /**
+     * @minimum 1
+     * @maximum 65535
+     */
   electrumPort: number;
   electrumTls: boolean;
   electrumAllowSelfSigned: boolean;
   confirmationThreshold: number;
   xmppServer: string;
+  /**
+     * @minimum 1
+     * @maximum 65535
+     */
   xmppPort: number;
   xmppJid: string;
   xmppTls: boolean;
   recipientJid: string;
   xmppConfigured: boolean;
+  alertTemplate: string;
+  futureOnlyDefault: boolean;
 }
 
 export interface AppSettingsUpdate {
   electrumHost?: string;
+  /**
+     * @minimum 1
+     * @maximum 65535
+     */
   electrumPort?: number;
   electrumTls?: boolean;
   electrumAllowSelfSigned?: boolean;
   confirmationThreshold?: number;
   xmppServer?: string;
+  /**
+     * @minimum 1
+     * @maximum 65535
+     */
   xmppPort?: number;
   xmppJid?: string;
   xmppPassword?: string;
   xmppTls?: boolean;
   recipientJid?: string;
+  alertTemplate?: string;
+  futureOnlyDefault?: boolean;
 }
 
 export interface NodeStatus {
@@ -70,6 +108,28 @@ export interface NodeStatus {
   blockHeight?: number | null;
   message?: string | null;
   lastCheckedAt?: string | null;
+}
+
+export type XmppStatusErrorKind = typeof XmppStatusErrorKind[keyof typeof XmppStatusErrorKind];
+
+
+export const XmppStatusErrorKind = {
+  auth: 'auth',
+  'host-not-found': 'host-not-found',
+  tls: 'tls',
+  timeout: 'timeout',
+  other: 'other',
+} as const;
+
+export interface XmppStatusError {
+  kind: XmppStatusErrorKind;
+  message: string;
+}
+
+export interface XmppStatus {
+  connected: boolean;
+  configured: boolean;
+  error?: XmppStatusError | null;
 }
 
 export type AlertEventDirection = typeof AlertEventDirection[keyof typeof AlertEventDirection];

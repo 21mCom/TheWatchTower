@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useGetSettings, useUpdateSettings, useSendTestAlert, useGetNodeStatus, getGetSettingsQueryKey, getGetNodeStatusQueryKey } from "@workspace/api-client-react";
+import { useGetSettings, useUpdateSettings, useSendTestAlert, useGetNodeStatus, useGetXmppStatus, getGetSettingsQueryKey, getGetNodeStatusQueryKey, getGetXmppStatusQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
@@ -47,9 +47,17 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
+const helpTextStyle: React.CSSProperties = {
+  fontSize: 9,
+  color: "var(--wt-text-dim)",
+  lineHeight: 1.5,
+  marginTop: 4,
+};
+
 export default function Settings() {
   const { data: settings, isLoading } = useGetSettings();
   const { data: nodeStatus } = useGetNodeStatus({ query: { queryKey: getGetNodeStatusQueryKey(), refetchInterval: 10000 }});
+  const { data: xmppStatus } = useGetXmppStatus({ query: { queryKey: getGetXmppStatusQueryKey(), refetchInterval: 10000 }});
 
   const updateSettings = useUpdateSettings();
   const sendTestAlert = useSendTestAlert();
@@ -71,6 +79,7 @@ export default function Settings() {
     xmppTls: true,
     recipientJid: "",
     alertTemplate: DEFAULT_TEMPLATE,
+    futureOnlyDefault: true,
   });
 
   useEffect(() => {
@@ -89,6 +98,7 @@ export default function Settings() {
         xmppTls: settings.xmppTls,
         recipientJid: settings.recipientJid,
         alertTemplate: settings.alertTemplate ?? DEFAULT_TEMPLATE,
+        futureOnlyDefault: settings.futureOnlyDefault,
       }));
     }
   }, [settings]);
@@ -145,6 +155,22 @@ export default function Settings() {
   };
 
   const showSelfSignedWarning = formData.electrumTls && formData.electrumAllowSelfSigned;
+
+  const xmppPort = Number(formData.xmppPort);
+  const xmppPortTlsWarning =
+    formData.xmppServer.trim() === ""
+      ? ""
+      : xmppPort === 5222 && formData.xmppTls
+        ? "Port 5222 is the STARTTLS port but “Use TLS” (direct TLS) is on. Turn TLS off for 5222, or use 443 for direct TLS."
+        : xmppPort === 443 && !formData.xmppTls
+          ? "Port 443 is the direct-TLS port but “Use TLS” is off. Turn TLS on for 443, or use 5222 for STARTTLS."
+          : "";
+
+  const xmppStatusView: { label: string; detail: string; color: string } = xmppStatus?.connected
+    ? { label: "Connected — notifications are working", detail: "", color: "var(--wt-status-ok)" }
+    : !xmppStatus?.configured
+      ? { label: "Not configured", detail: "Set the JID, password, and recipient, then save.", color: "var(--wt-text-muted)" }
+      : { label: "Disconnected", detail: xmppStatus?.error?.message ?? "Not yet connected — send a test alert to check.", color: "var(--wt-status-error)" };
 
   if (isLoading) return <div style={{ padding: 24, color: "var(--wt-text-muted)" }}>Loading settings...</div>;
 
@@ -207,21 +233,47 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Alert Behavior */}
+      <div style={{ background: "var(--wt-card-bg)", border: "1px solid var(--wt-border)", borderRadius: 6, padding: 20, marginBottom: 16 }}>
+        <div style={{ fontSize: 11, color: "var(--wt-brand)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 14 }}>◐ Alert Behavior</div>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+          <input type="checkbox" name="futureOnlyDefault" checked={formData.futureOnlyDefault} onChange={handleChange} style={{ marginTop: 2 }} />
+          <span>
+            <span style={{ fontSize: 12, color: "var(--wt-text)" }}>Future transactions only (default for new addresses)</span>
+            <span style={{ display: "block", fontSize: 10, color: "var(--wt-text-dim)", lineHeight: 1.5, marginTop: 4 }}>
+              When enabled, newly added addresses record their existing history silently and only alert on transactions that arrive afterwards. Disable to import full history and alert on every past transaction. You can override this per address when adding it.
+            </span>
+          </span>
+        </label>
+        <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+          <button
+            onClick={handleSave}
+            disabled={updateSettings.isPending}
+            style={{ background: "var(--wt-brand)", border: "none", color: "#000", fontFamily: "inherit", fontSize: 11, padding: "6px 14px", borderRadius: 4, cursor: "pointer", fontWeight: 700, letterSpacing: "0.08em", opacity: updateSettings.isPending ? 0.7 : 1 }}
+          >
+            {updateSettings.isPending ? "SAVING..." : "SAVE CONFIG"}
+          </button>
+        </div>
+      </div>
+
       {/* XMPP Settings */}
       <div style={{ background: "var(--wt-card-bg)", border: "1px solid var(--wt-border)", borderRadius: 6, padding: 20, marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: "var(--wt-brand)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 14 }}>◉ XMPP Account</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
-            <div style={{ fontSize: 10, color: "var(--wt-text-dim)", letterSpacing: "0.08em", marginBottom: 4 }}>XMPP SERVER</div>
-            <input name="xmppServer" value={formData.xmppServer} onChange={handleChange} style={inputStyle} />
+            <div style={{ fontSize: 10, color: "var(--wt-text-dim)", letterSpacing: "0.08em", marginBottom: 4 }}>XMPP SERVER (OPTIONAL)</div>
+            <input name="xmppServer" value={formData.xmppServer} onChange={handleChange} placeholder="auto-discover from JID domain" style={inputStyle} />
+            <div style={helpTextStyle}>Leave blank to auto-discover the endpoint via SRV records from your JID's domain. Set a host only to override discovery.</div>
           </div>
           <div>
             <div style={{ fontSize: 10, color: "var(--wt-text-dim)", letterSpacing: "0.08em", marginBottom: 4 }}>XMPP PORT</div>
             <input type="number" name="xmppPort" value={formData.xmppPort} onChange={handleChange} style={inputStyle} />
+            <div style={helpTextStyle}>Used only with an explicit server. 443 with TLS on (direct TLS); 5222 with TLS off (STARTTLS).</div>
           </div>
           <div>
             <div style={{ fontSize: 10, color: "var(--wt-text-dim)", letterSpacing: "0.08em", marginBottom: 4 }}>XMPP JID (SENDER)</div>
             <input name="xmppJid" value={formData.xmppJid} onChange={handleChange} placeholder="watchtower@example.com" style={inputStyle} />
+            <div style={helpTextStyle}>The full sender account. Its domain (after @) is what SRV discovery uses when the server is blank.</div>
           </div>
           <div>
             <div style={{ fontSize: 10, color: "var(--wt-text-dim)", letterSpacing: "0.08em", marginBottom: 4 }}>PASSWORD</div>
@@ -231,12 +283,29 @@ export default function Settings() {
             <div style={{ fontSize: 10, color: "var(--wt-text-dim)", letterSpacing: "0.08em", marginBottom: 4 }}>RECIPIENT JID</div>
             <input name="recipientJid" value={formData.recipientJid} onChange={handleChange} placeholder="you@example.com" style={inputStyle} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 18 }}>
-            <input type="checkbox" name="xmppTls" checked={formData.xmppTls} onChange={handleChange} />
-            <span style={{ fontSize: 11, color: "var(--wt-text)" }}>Use TLS</span>
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-start", paddingTop: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input type="checkbox" name="xmppTls" checked={formData.xmppTls} onChange={handleChange} />
+              <span style={{ fontSize: 11, color: "var(--wt-text)" }}>Use TLS</span>
+            </div>
+            <div style={helpTextStyle}>On = direct TLS (typically port 443). Off = STARTTLS (typically port 5222).</div>
           </div>
         </div>
-        <div style={{ marginTop: 20, display: "flex", gap: 8 }}>
+        {xmppPortTlsWarning && (
+          <div style={{ marginTop: 12, fontSize: 10, color: "#f5a524", background: "color-mix(in srgb, #f5a524 12%, transparent)", border: "1px solid color-mix(in srgb, #f5a524 45%, transparent)", borderRadius: 4, padding: "8px 10px", lineHeight: 1.5 }}>
+            ⚠ {xmppPortTlsWarning}
+          </div>
+        )}
+        <div style={{ marginTop: 16, display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <div style={{ width: 7, height: 7, borderRadius: "50%", marginTop: 3, flexShrink: 0, background: xmppStatusView.color, boxShadow: xmppStatus?.connected ? "0 0 5px color-mix(in srgb, var(--wt-status-ok) 53%, transparent)" : "none" }} />
+          <div style={{ fontSize: 11, color: xmppStatusView.color, lineHeight: 1.5 }}>
+            {xmppStatusView.label}
+            {xmppStatusView.detail && (
+              <div style={{ fontSize: 10, color: "var(--wt-text-dim)", marginTop: 2 }}>{xmppStatusView.detail}</div>
+            )}
+          </div>
+        </div>
+        <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
           <button
             onClick={handleTestAlert}
             disabled={sendTestAlert.isPending}

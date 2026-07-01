@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { alertEvents, watchedAddresses } from "@workspace/db";
-import { eq, desc, count } from "drizzle-orm";
+import { eq, desc, count, and } from "drizzle-orm";
 import { ListActivityQueryParams } from "@workspace/api-zod";
 
 const router = Router();
@@ -34,20 +34,23 @@ router.get("/", async (req, res) => {
     .from(alertEvents)
     .innerJoin(watchedAddresses, eq(alertEvents.addressId, watchedAddresses.id));
 
-  const events = addressId
-    ? await baseQuery
-        .where(eq(alertEvents.addressId, addressId))
-        .orderBy(desc(alertEvents.detectedAt))
-        .limit(limit)
-        .offset(offset)
-    : await baseQuery.orderBy(desc(alertEvents.detectedAt)).limit(limit).offset(offset);
+  // Baselined rows are silent history records (no direction/amount, no alert) —
+  // exclude them from the activity feed and totals so they never surface as events.
+  const notBaselined = eq(alertEvents.baselined, false);
+  const eventsWhere = addressId
+    ? and(eq(alertEvents.addressId, addressId), notBaselined)
+    : notBaselined;
 
-  const totalResult = addressId
-    ? await db
-        .select({ count: count() })
-        .from(alertEvents)
-        .where(eq(alertEvents.addressId, addressId))
-    : await db.select({ count: count() }).from(alertEvents);
+  const events = await baseQuery
+    .where(eventsWhere)
+    .orderBy(desc(alertEvents.detectedAt))
+    .limit(limit)
+    .offset(offset);
+
+  const totalResult = await db
+    .select({ count: count() })
+    .from(alertEvents)
+    .where(eventsWhere);
 
   const total = Number(totalResult[0]?.count ?? 0);
 

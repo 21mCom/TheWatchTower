@@ -3,8 +3,11 @@ version: "3.7"
 services:
   app_proxy:
     environment:
-      # The proxy forwards requests to the "web" service on port 3000
-      APP_HOST: web
+      # On Umbrel, every app's containers share `umbrel_main_network`, where the
+      # bare service name `web` collides with other apps' `web` services and DNS
+      # resolves to a stranger's container (-> ECONNREFUSED). The proxy must
+      # target THIS app's unique full container name: <app-id>_<service>_1.
+      APP_HOST: 21mcom-app-store-the-watchtower_web_1
       APP_PORT: 3000
       # Strip any client-supplied X-Forwarded-For before forwarding.
       #
@@ -23,13 +26,16 @@ services:
         proxy_set_header X-Real-IP       $remote_addr;
 
   web:
-    image: ghcr.io/21mcom/watchtower:1.0.0
+    image: ghcr.io/21mcom/watchtower:1.0.7
     restart: on-failure
     stop_grace_period: 1m
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: postgresql://watchtower:watchtower@db:5432/watchtower
+      # Same shared-network rule as APP_HOST above: reach Postgres by its unique
+      # full container name, not the ambiguous bare `db` alias (which can resolve
+      # to another app's Postgres on umbrel_main_network).
+      DATABASE_URL: postgresql://watchtower:watchtower@21mcom-app-store-the-watchtower_db_1:5432/watchtower
     depends_on:
       - db
     networks:

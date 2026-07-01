@@ -30,7 +30,8 @@ import type {
   TestAlertResult,
   WatchedAddress,
   WatchedAddressCreate,
-  WatchedAddressUpdate
+  WatchedAddressUpdate,
+  XmppStatus
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -641,6 +642,76 @@ export const useSendTestAlert = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getSendTestAlertMutationOptions(options));
     }
+
+export const getGetXmppStatusUrl = () => {
+
+
+
+
+  return `/api/settings/xmpp-status`
+}
+
+/**
+ * @summary Get current XMPP notification connection status
+ */
+export const getXmppStatus = async ( options?: RequestInit): Promise<XmppStatus> => {
+
+  return customFetch<XmppStatus>(getGetXmppStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+export const getGetXmppStatusQueryKey = () => {
+    return [
+    `/api/settings/xmpp-status`
+    ] as const;
+    }
+
+
+export const getGetXmppStatusQueryOptions = <TData = Awaited<ReturnType<typeof getXmppStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getXmppStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetXmppStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getXmppStatus>>> = ({ signal }) => getXmppStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getXmppStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetXmppStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getXmppStatus>>>
+export type GetXmppStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get current XMPP notification connection status
+ */
+
+export function useGetXmppStatus<TData = Awaited<ReturnType<typeof getXmppStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getXmppStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetXmppStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
 
 export const getGetNodeStatusUrl = () => {
 

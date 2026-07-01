@@ -210,6 +210,7 @@ async function seedTestData(): Promise<void> {
       label: TEST_ADDRESS_LABEL,
       address: `test-placeholder-${TEST_ADDR_ID}`,
       scripthash: TEST_SCRIPTHASH,
+      watchMode: "all",
     })
     .onConflictDoNothing();
 }

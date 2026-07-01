@@ -16,18 +16,23 @@
  *   store is self-sufficient even if migrate is skipped in tests.
  * - The core increment is a single atomic UPSERT so concurrent requests from
  *   the same IP never produce a TOCTOU race.
- * - Expired windows are re-initialised inside the same UPSERT; no separate
- *   cleanup job is needed for correctness (a periodic DELETE is nice-to-have
- *   but not required for correct limiting behaviour).
+ * - Expired windows are re-initialised inside the same UPSERT, so a cleanup job
+ *   is not required for correct limiting behaviour.  It is, however, required
+ *   for health: expired rows for keys that never return (e.g. a one-off IP seen
+ *   during a traffic spike) are never touched again by the UPSERT and would
+ *   otherwise accumulate as dead rows, bloating the table and slowing queries.
+ *   cleanupExpired() physically deletes them; startCleanup() runs it on a timer.
  */
 
 import pg from "pg";
 import type { Store, Options, ClientRateLimitInfo } from "express-rate-limit";
+import { logger } from "./logger.js";
 
 export class PgRateLimitStore implements Store {
   private readonly pool: pg.Pool;
   private windowMs: number = 60_000;
   private readonly ready: Promise<void>;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(connectionString: string) {
     this.pool = new pg.Pool({ connectionString, max: 3 });
@@ -101,8 +106,48 @@ export class PgRateLimitStore implements Store {
     await this.pool.query(`DELETE FROM rate_limit_windows`);
   }
 
+  /**
+   * Physically delete all windows whose reset_time is in the past.
+   *
+   * The UPSERT in increment() only resets rows for keys that come back; keys
+   * that never return leave their expired rows behind forever.  This DELETE
+   * reclaims that dead space.  Returns the number of rows removed.
+   */
+  async cleanupExpired(): Promise<number> {
+    await this.ready;
+    const result = await this.pool.query(
+      `DELETE FROM rate_limit_windows WHERE reset_time < NOW()`,
+    );
+    const deleted = result.rowCount ?? 0;
+    logger.debug({ deleted }, "Rate-limit cleanup: removed expired windows");
+    return deleted;
+  }
+
+  /**
+   * Start a periodic background job that deletes expired windows.
+   *
+   * The timer is unref'd so it never keeps the process alive on its own, and
+   * errors are caught and logged rather than crashing the process.  Calling
+   * this more than once replaces the previous timer.
+   */
+  startCleanup(intervalMs: number): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+    }
+    this.cleanupTimer = setInterval(() => {
+      this.cleanupExpired().catch((err) => {
+        logger.error({ err }, "Rate-limit cleanup failed");
+      });
+    }, intervalMs);
+    this.cleanupTimer.unref?.();
+  }
+
   /** Release pool connections when the server shuts down. */
   async shutdown(): Promise<void> {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
     await this.pool.end();
   }
 }

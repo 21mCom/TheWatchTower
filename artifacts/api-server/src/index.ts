@@ -1,6 +1,29 @@
-import app from "./app";
+import app, { rateLimitStore } from "./app";
 import { logger } from "./lib/logger";
 import { initMonitor } from "./services/monitor";
+
+// Periodically purge expired rate-limit windows so dead rows can't accumulate
+// and bloat the table (see PgRateLimitStore.cleanupExpired). Configurable via
+// RATE_LIMIT_CLEANUP_INTERVAL_MS; defaults to 5 minutes. Only runs when the
+// Postgres-backed store is active (production); the in-memory store used in
+// tests needs no cleanup.
+const DEFAULT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+function resolveCleanupIntervalMs(): number {
+  const raw = process.env["RATE_LIMIT_CLEANUP_INTERVAL_MS"];
+  if (!raw) {
+    return DEFAULT_CLEANUP_INTERVAL_MS;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    logger.warn(
+      { raw },
+      "Invalid RATE_LIMIT_CLEANUP_INTERVAL_MS; using default",
+    );
+    return DEFAULT_CLEANUP_INTERVAL_MS;
+  }
+  return parsed;
+}
 
 const rawPort = process.env["PORT"];
 
@@ -25,6 +48,14 @@ const server = app.listen(port, () => {
   initMonitor().catch((err) => {
     logger.error({ err }, "Monitor init failed");
   });
+
+  // Kick off periodic cleanup of expired rate-limit windows. The store is only
+  // defined when the Postgres-backed store is active (see app.ts).
+  if (rateLimitStore) {
+    const intervalMs = resolveCleanupIntervalMs();
+    rateLimitStore.startCleanup(intervalMs);
+    logger.info({ intervalMs }, "Rate-limit window cleanup scheduled");
+  }
 });
 
 // A bind failure (e.g. EADDRINUSE) is emitted as an 'error' event, not passed

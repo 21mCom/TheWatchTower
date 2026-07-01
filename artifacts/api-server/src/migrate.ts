@@ -49,6 +49,7 @@ async function main() {
         recipient_jid               TEXT,
         confirmation_threshold      INTEGER NOT NULL DEFAULT 1,
         alert_template              TEXT NOT NULL DEFAULT '[{direction}] {label}\nAmount: {amount_btc} ({amount_sats} sats)\nAddress: {address}\nTxid: {txid}\nStatus: {status}',
+        future_only_default         BOOLEAN NOT NULL DEFAULT TRUE,
         updated_at                  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
 
@@ -60,15 +61,27 @@ async function main() {
       ALTER TABLE app_settings
         ADD COLUMN IF NOT EXISTS alert_template TEXT NOT NULL DEFAULT '[{direction}] {label}\nAmount: {amount_btc} ({amount_sats} sats)\nAddress: {address}\nTxid: {txid}\nStatus: {status}';
 
+      -- Idempotent upgrade: add future_only_default to existing installs
+      ALTER TABLE app_settings
+        ADD COLUMN IF NOT EXISTS future_only_default BOOLEAN NOT NULL DEFAULT TRUE;
+
       INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
       CREATE TABLE IF NOT EXISTS watched_addresses (
-        id          TEXT PRIMARY KEY,
-        label       TEXT NOT NULL,
-        address     TEXT NOT NULL UNIQUE,
-        scripthash  TEXT NOT NULL,
-        created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        id               TEXT PRIMARY KEY,
+        label            TEXT NOT NULL,
+        address          TEXT NOT NULL UNIQUE,
+        scripthash       TEXT NOT NULL,
+        watch_mode       TEXT NOT NULL DEFAULT 'future' CHECK (watch_mode IN ('future', 'all')),
+        baseline_applied BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
+
+      -- Idempotent upgrade: add per-address watch-mode + baseline flag to existing installs
+      ALTER TABLE watched_addresses
+        ADD COLUMN IF NOT EXISTS watch_mode TEXT NOT NULL DEFAULT 'future' CHECK (watch_mode IN ('future', 'all'));
+      ALTER TABLE watched_addresses
+        ADD COLUMN IF NOT EXISTS baseline_applied BOOLEAN NOT NULL DEFAULT FALSE;
 
       CREATE TABLE IF NOT EXISTS alert_events (
         id                   TEXT PRIMARY KEY,
@@ -80,8 +93,13 @@ async function main() {
         block_height         INTEGER,
         mempool_alerted_at   TIMESTAMP WITH TIME ZONE,
         confirmed_alerted_at TIMESTAMP WITH TIME ZONE,
+        baselined            BOOLEAN NOT NULL DEFAULT FALSE,
         detected_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
+
+      -- Idempotent upgrade: add baselined flag to existing installs
+      ALTER TABLE alert_events
+        ADD COLUMN IF NOT EXISTS baselined BOOLEAN NOT NULL DEFAULT FALSE;
 
       -- Remove any pre-existing duplicate (address_id, txid) rows before applying the
       -- unique constraint. Keeps the row with the earliest detected_at (lowest id as

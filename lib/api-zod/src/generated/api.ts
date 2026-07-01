@@ -24,6 +24,7 @@ export const ListAddressesResponseItem = zod.object({
   "label": zod.string(),
   "address": zod.string(),
   "scripthash": zod.string(),
+  "watchMode": zod.enum(['future', 'all']),
   "createdAt": zod.coerce.date()
 })
 export const ListAddressesResponse = zod.array(ListAddressesResponseItem)
@@ -39,7 +40,8 @@ export const createAddressBodyLabelMax = 100;
 
 export const CreateAddressBody = zod.object({
   "label": zod.string().min(1).max(createAddressBodyLabelMax),
-  "address": zod.string().min(1)
+  "address": zod.string().min(1),
+  "watchMode": zod.enum(['future', 'all']).optional()
 })
 
 export const CreateAddressResponse = zod.object({
@@ -47,6 +49,7 @@ export const CreateAddressResponse = zod.object({
   "label": zod.string(),
   "address": zod.string(),
   "scripthash": zod.string(),
+  "watchMode": zod.enum(['future', 'all']),
   "createdAt": zod.coerce.date()
 })
 
@@ -73,6 +76,7 @@ export const UpdateAddressResponse = zod.object({
   "label": zod.string(),
   "address": zod.string(),
   "scripthash": zod.string(),
+  "watchMode": zod.enum(['future', 'all']),
   "createdAt": zod.coerce.date()
 })
 
@@ -90,52 +94,74 @@ export const DeleteAddressResponse = zod.void()
 /**
  * @summary Get app settings
  */
+export const getSettingsResponseElectrumPortMax = 65535;
+
+export const getSettingsResponseXmppPortMax = 65535;
+
+
+
 export const GetSettingsResponse = zod.object({
   "electrumHost": zod.string(),
-  "electrumPort": zod.number(),
+  "electrumPort": zod.number().int().min(1).max(getSettingsResponseElectrumPortMax),
   "electrumTls": zod.boolean(),
   "electrumAllowSelfSigned": zod.boolean(),
   "confirmationThreshold": zod.number(),
   "xmppServer": zod.string(),
-  "xmppPort": zod.number(),
+  "xmppPort": zod.number().int().min(1).max(getSettingsResponseXmppPortMax),
   "xmppJid": zod.string(),
   "xmppTls": zod.boolean(),
   "recipientJid": zod.string(),
-  "xmppConfigured": zod.boolean()
+  "xmppConfigured": zod.boolean(),
+  "alertTemplate": zod.string(),
+  "futureOnlyDefault": zod.boolean()
 })
 
 
 /**
  * @summary Update app settings
  */
+export const updateSettingsBodyElectrumPortMax = 65535;
+
+export const updateSettingsBodyXmppPortMax = 65535;
+
+
+
 export const UpdateSettingsBody = zod.object({
   "electrumHost": zod.string().optional(),
-  "electrumPort": zod.number().int().min(1).max(65535).optional(),
+  "electrumPort": zod.number().int().min(1).max(updateSettingsBodyElectrumPortMax).optional(),
   "electrumTls": zod.boolean().optional(),
   "electrumAllowSelfSigned": zod.boolean().optional(),
   "confirmationThreshold": zod.number().optional(),
   "xmppServer": zod.string().optional(),
-  "xmppPort": zod.number().int().min(1).max(65535).optional(),
+  "xmppPort": zod.number().int().min(1).max(updateSettingsBodyXmppPortMax).optional(),
   "xmppJid": zod.string().optional(),
   "xmppPassword": zod.string().optional(),
   "xmppTls": zod.boolean().optional(),
   "recipientJid": zod.string().optional(),
-  "alertTemplate": zod.string().optional()
+  "alertTemplate": zod.string().optional(),
+  "futureOnlyDefault": zod.boolean().optional()
 })
+
+export const updateSettingsResponseElectrumPortMax = 65535;
+
+export const updateSettingsResponseXmppPortMax = 65535;
+
+
 
 export const UpdateSettingsResponse = zod.object({
   "electrumHost": zod.string(),
-  "electrumPort": zod.number(),
+  "electrumPort": zod.number().int().min(1).max(updateSettingsResponseElectrumPortMax),
   "electrumTls": zod.boolean(),
   "electrumAllowSelfSigned": zod.boolean(),
   "confirmationThreshold": zod.number(),
   "xmppServer": zod.string(),
-  "xmppPort": zod.number(),
+  "xmppPort": zod.number().int().min(1).max(updateSettingsResponseXmppPortMax),
   "xmppJid": zod.string(),
   "xmppTls": zod.boolean(),
   "recipientJid": zod.string(),
   "xmppConfigured": zod.boolean(),
-  "alertTemplate": zod.string()
+  "alertTemplate": zod.string(),
+  "futureOnlyDefault": zod.boolean()
 })
 
 
